@@ -4,11 +4,17 @@ on: push
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [macos-latest, ubuntu-latest, ubuntu-latest]
+
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v2
+
       - name: Setup PureScript
         uses: purescript-contrib/setup-purescript@main
+
       - name: Cache PureScript dependencies
         uses: actions/cache@v2
         with:
@@ -16,7 +22,9 @@ jobs:
           path: |
             .spago
             output
+
       - name: Build
         run: spago build
+
       - name: Run tests
         run: spago test --no-install
