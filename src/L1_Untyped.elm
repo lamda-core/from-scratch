@@ -25,6 +25,7 @@ type Expr
     | Var String
     | Lam String Expr
     | App Expr Expr
+    | Let Env Expr
       -- Built-in functions
     | Add
     | Sub
@@ -191,6 +192,11 @@ eq e1 e2 =
 
     eval (eq (Var "x") (Var "y")) [ ( "x", Num 3 ), ( "y", Num 2 ) ] --> Ok (Lam "True" (Lam "False" (Var "False")))
 
+    --== Let bindings ==--
+    eval (Let [] (Var "x")) [ ( "x", Num 1 ) ] --> Ok (Num 1)
+
+    eval (Let [ ( "x", Num 1 ) ] (Var "x")) [ ( "x", Num 2 ) ] --> Ok (Num 1)
+
 -}
 eval : Expr -> Env -> Result Error Expr
 eval expr env =
@@ -228,7 +234,7 @@ eval expr env =
                         eval e env
 
                     else
-                        eval e (( x, e2 ) :: env)
+                        eval e (( x, Let env e2 ) :: env)
 
                 Ok e1_ ->
                     case ( e1_, eval e2 env ) of
@@ -259,6 +265,12 @@ eval expr env =
 
                 Err err ->
                     Err err
+
+        Let (( x, ex ) :: vars) e ->
+            eval (Let vars e) (( x, ex ) :: env)
+
+        Let [] e ->
+            eval e env
 
         op ->
             Ok op
