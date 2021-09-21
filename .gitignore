@@ -1,9 +1,8 @@
-# Dependencies
-.psci_modules
-.spago
-bower_components
-node_modules
+# elm-package generated files
+elm-stuff
 
-# Generated files
-.psci
-output
+# elm-repl generated files
+repl-temp-*
+
+# elm-verify-examples files
+tests/VerifyExamples
