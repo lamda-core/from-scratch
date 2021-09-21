@@ -13,7 +13,7 @@ jobs:
       - uses: actions/checkout@v2
 
       - name: Setup Elm
-        uses: justgook/setup-elm@1.2.0
+        uses: jorelali/setup-elm@v3
 
       - name: Run tests
         run: elm-verify-examples --run-tests
