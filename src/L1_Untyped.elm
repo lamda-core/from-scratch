@@ -2,19 +2,20 @@ module L1_Untyped exposing (..)
 
 {-|
 
-    -- --== Simple recursion ==--
-    -- eval (letVar ( "f", Lam "x" (App (Var "f") (Var "x")) ) (Var "f")) [] -- Ok (Lam "x" (App (Var "f") (Var "x")))
-    -- eval (letVar ( "f", Lam "x" (App (Var "x") (Var "f")) ) (Var "f")) [] -- Ok (Lam "x" (App (Var "x") (Var "f")))
-    -- --== Factorial ==--
-    -- -- f = \n. (n == 0) 1 (n * f (n - 1))
-    -- factorial : Expr
-    -- factorial =
-    --     Lam "n" (app (eq (Var "n") (Num 0)) [ Num 1, mul (Var "n") (App (Var "f") (sub (Var "n") (Num 1))) ])
-    -- eval (letVar ( "f", factorial ) (Var "f")) [] -- Ok factorial
-    -- eval (letVar ( "f", factorial ) (App (Var "f") (Num 0))) [] -- Ok (Num 1)
-    -- eval (letVar ( "f", factorial ) (App (Var "f") (Num 1))) [] -- Ok (Num 1)
+    --== Simple recursion ==--
+    eval (Var "f") [ ( "f", Lam "x" (App (Var "f") (Var "x")) ) ] --> Ok (Lam "x" (App (Var "f") (Var "x")))
+    eval (Var "f") [ ( "f", Lam "x" (App (Var "x") (Var "f")) ) ] --> Ok (Lam "x" (App (Var "x") (Var "f")))
 
+    --== Factorial ==--
+    -- f 0 = 1
+    -- f n = n * f (n - 1)
+    factorial : Expr
+    factorial =
+        Lam "n" (app (eq (Var "n") (Num 0)) [ Num 1, mul (Var "n") (App (Var "f") (sub (Var "n") (Num 1))) ])
 
+    eval (Var "f") [ ( "f", factorial ) ] --> Ok factorial
+    eval (App (Var "f") (Num 0)) [ ( "f", factorial ) ] --> Ok (Num 1)
+    eval (App (Var "f") (Num 1)) [ ( "f", factorial ) ] --> Ok (Num 1)
 
 -}
 
@@ -150,17 +151,21 @@ eq e1 e2 =
     eval (Lam "x" (Var "x")) [] --> Ok (Lam "x" (Var "x"))
 
     --== Application ==--
-    eval (App (Var "f") (Num 1)) [] --> Err (UndefinedVar "f")
+    eval (App (Num 1) (Num 2)) [] --> Err (NotAFunction (Num 1))
 
-    eval (App (Var "f") (Num 2)) [ ( "f", Num 1 ) ] --> Err (NotAFunction (Num 1))
+    eval (App (Var "f") (Num 1)) [] --> Err (UndefinedVar "f")
 
     eval (App (Var "f") (Var "x")) [ ( "f", Var "f" ) ] --> Err (UndefinedVar "x")
 
     eval (App (Var "f") (Var "x")) [ ( "f", Var "f" ), ( "x", Num 1 ) ] --> Ok (App (Var "f") (Num 1))
 
+    eval (App (Lam "x" (Var "x")) (Var "x")) [ ( "x", Num 1 ) ] --> Ok (Num 1)
+
     eval (App (Var "f") (Var "x")) [ ( "f", Lam "x" (Var "x") ), ( "x", Num 1 ) ] --> Ok (Num 1)
 
-    eval (App (Var "f") (Var "x")) [ ( "f", App (Var "g") (Num 1) ), ( "g", Var "g" ), ( "x", Num 2 ) ] --> Ok (App (App (Var "g") (Num 1)) (Num 2))
+    eval (App (App (Var "f") (Num 1)) (Var "x")) [ ( "f", Var "f" ), ( "x", Num 2 ) ] --> Ok (App (App (Var "f") (Num 1)) (Num 2))
+
+    eval (App (App (Var "f") (Lam "x" (Var "x"))) (Var "x")) [ ( "f", Lam "x" (Var "x") ), ( "x", Num 1 ) ] --> Ok (Num 1)
 
     --== Addition ==--
     eval (App Add (Var "x")) [ ( "x", Num 3 ) ] --> Ok (App Add (Num 3))
@@ -200,7 +205,7 @@ eval expr env =
                         Ok (Var x)
 
                     else
-                        eval ex env
+                        eval ex (( x, Var x ) :: env)
 
                 Nothing ->
                     Err (UndefinedVar x)
@@ -214,36 +219,45 @@ eval expr env =
                     Err err
 
         App e1 e2 ->
-            case ( eval e1 env, eval e2 env ) of
-                ( Ok (Num k), _ ) ->
+            case eval e1 env of
+                Ok (Num k) ->
                     Err (NotAFunction (Num k))
 
-                ( Ok (Lam x e), Ok ex ) ->
-                    eval e (( x, ex ) :: env)
-
-                ( Ok (App Add (Num k1)), Ok (Num k2) ) ->
-                    Ok (Num (k1 + k2))
-
-                ( Ok (App Sub (Num k1)), Ok (Num k2) ) ->
-                    Ok (Num (k1 - k2))
-
-                ( Ok (App Mul (Num k1)), Ok (Num k2) ) ->
-                    Ok (Num (k1 * k2))
-
-                ( Ok (App Eq (Num k1)), Ok (Num k2) ) ->
-                    if k1 == k2 then
-                        Ok (Lam "True" (Lam "False" (Var "True")))
+                Ok (Lam x e) ->
+                    if e2 == Var x then
+                        eval e env
 
                     else
-                        Ok (Lam "True" (Lam "False" (Var "False")))
+                        eval e (( x, e2 ) :: env)
 
-                ( Ok e1_, Ok e2_ ) ->
-                    Ok (App e1_ e2_)
+                Ok e1_ ->
+                    case ( e1_, eval e2 env ) of
+                        ( Var x, Ok e2_ ) ->
+                            Ok (App (Var x) e2_)
 
-                ( Err err, _ ) ->
-                    Err err
+                        ( App Add (Num k1), Ok (Num k2) ) ->
+                            Ok (Num (k1 + k2))
 
-                ( _, Err err ) ->
+                        ( App Sub (Num k1), Ok (Num k2) ) ->
+                            Ok (Num (k1 - k2))
+
+                        ( App Mul (Num k1), Ok (Num k2) ) ->
+                            Ok (Num (k1 * k2))
+
+                        ( App Eq (Num k1), Ok (Num k2) ) ->
+                            if k1 == k2 then
+                                Ok (Lam "True" (Lam "False" (Var "True")))
+
+                            else
+                                Ok (Lam "True" (Lam "False" (Var "False")))
+
+                        ( _, Ok e2_ ) ->
+                            Ok (App e1_ e2_)
+
+                        ( _, Err err ) ->
+                            Err err
+
+                Err err ->
                     Err err
 
         op ->
