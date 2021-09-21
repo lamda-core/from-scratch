@@ -12,19 +12,8 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
-      - name: Setup PureScript
-        uses: purescript-contrib/setup-purescript@main
-
-      - name: Cache PureScript dependencies
-        uses: actions/cache@v2
-        with:
-          key: ${{ runner.os }}-spago-${{ hashFiles('**/*.dhall') }}
-          path: |
-            .spago
-            output
-
-      - name: Build
-        run: spago build
+      - name: Setup Elm
+        uses: justgook/setup-elm@1.2.0
 
       - name: Run tests
-        run: spago test --no-install
+        run: elm-verify-examples --run-tests
