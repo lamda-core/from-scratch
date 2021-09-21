@@ -15,5 +15,8 @@ jobs:
       - name: Setup Elm
         uses: jorelali/setup-elm@v3
 
+      - name: Install tooling
+        run: npm install elm-verify-examples
+
       - name: Run tests
         run: elm-verify-examples --run-tests
