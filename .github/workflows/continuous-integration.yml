@@ -6,7 +6,7 @@ jobs:
   build:
     strategy:
       matrix:
-        os: [macos-latest, ubuntu-latest, ubuntu-latest]
+        os: [macos-latest, ubuntu-latest, windows-latest]
 
     runs-on: ${{ matrix.os }}
 
@@ -16,12 +16,16 @@ jobs:
       - name: Setup Elm
         uses: jorelali/setup-elm@v3
 
+      - name: Cache tooling
+        uses: actions/cache@v2
+        with:
+          path: ${HOME}/bin
+          key: tooling-${{ matrix.os }}
+
       - name: Install tooling
         run: npm install -g elm-verify-examples
         env:
           NPM_CONFIG_PREFIX: ${HOME}
 
       - name: Run tests
-        run: elm-verify-examples --run-tests
-        env:
-          PATH: ${HOME}/bin
+        run: ${HOME}/bin/elm-verify-examples --run-tests
