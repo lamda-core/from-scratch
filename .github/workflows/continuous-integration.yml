@@ -1,0 +1,31 @@
+name: Continuous Integration
+
+on: push
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Setup Elm
+        uses: jorelali/setup-elm@v3
+
+      - name: Cache tooling
+        uses: actions/cache@v2
+        with:
+          path: ${HOME}/bin
+          key: tooling-${{ matrix.os }}
+
+      - name: Install tooling
+        run: npm install -g elm-verify-examples
+        env:
+          NPM_CONFIG_PREFIX: ${HOME}
+
+      - name: Run tests
+        run: ${HOME}/bin/elm-verify-examples --run-tests
