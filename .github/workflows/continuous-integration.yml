@@ -22,4 +22,6 @@ jobs:
           NPM_CONFIG_PREFIX: ${HOME}
 
       - name: Run tests
-        run: ${HOME}/bin/elm-verify-examples --run-tests
+        run: elm-verify-examples --run-tests
+        env:
+          PATH: ${HOME}/bin
