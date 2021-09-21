@@ -5,7 +5,6 @@ module L1_Untyped exposing (..)
     --== Simple recursion ==--
     eval (Var "f") [ ( "f", Lam "x" (App (Var "f") (Var "x")) ) ] --> Ok (Lam "x" (App (Var "f") (Var "x")))
     eval (Var "f") [ ( "f", Lam "x" (App (Var "x") (Var "f")) ) ] --> Ok (Lam "x" (App (Var "x") (Var "f")))
-    True --> False
 
     --== Factorial ==--
     -- f 0 = 1
