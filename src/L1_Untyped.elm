@@ -192,8 +192,11 @@ eval expr env =
                 Nothing ->
                     Err (UndefinedVar x)
 
-        Let vars e ->
-            eval e (vars ++ env)
+        Let (( x, ex ) :: vars) e ->
+            eval (Let vars e) (( x, ex ) :: env)
+
+        Let [] e ->
+            eval e env
 
         Lam x e ->
             case eval e (( x, Var x ) :: env) of
@@ -213,7 +216,7 @@ eval expr env =
                         eval e env
 
                     else
-                        eval (Let [ ( x, Let env e2 ) ] e) env
+                        eval e (( x, Let env e2 ) :: env)
 
                 Ok e1_ ->
                     case ( e1_, eval e2 env ) of
