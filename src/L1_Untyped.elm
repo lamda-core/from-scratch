@@ -23,9 +23,9 @@ module L1_Untyped exposing (..)
 type Expr
     = Num Float
     | Var String
+    | Let Env Expr
     | Lam String Expr
     | App Expr Expr
-    | Let Env Expr
       -- Built-in functions
     | Add
     | Sub
@@ -84,30 +84,6 @@ app f xs =
     List.foldl (\x e -> App e x) f xs
 
 
-{-|
-
-    letVar ( "x", Num 1 ) (Var "x") --> App (Lam "x" (Var "x")) (Num 1)
-
--}
-letVar : ( String, Expr ) -> Expr -> Expr
-letVar ( x, ex ) e =
-    App (Lam x e) ex
-
-
-{-|
-
-    letVars [] (Var "e") --> Var "e"
-
-    letVars [ ( "x", Num 1 ) ] (Var "e") --> (App (Lam "x" (Var "e")) (Num 1))
-
-    letVars [ ( "x", Num 1 ), ( "y", Num 2 ), ( "z", Num 3 ) ] (Var "e") --> (App (Lam "x" (App (Lam "y" (App (Lam "z" (Var "e")) (Num 3))) (Num 2))) (Num 1))
-
--}
-letVars : List ( String, Expr ) -> Expr -> Expr
-letVars vars e =
-    List.foldr letVar e vars
-
-
 add : Expr -> Expr -> Expr
 add e1 e2 =
     App (App Add e1) e2
@@ -144,6 +120,11 @@ eq e1 e2 =
 
     eval (Var "x") [ ( "y", Num 1 ), ( "x", Var "y" ) ] --> Ok (Num 1)
 
+    --== Let bindings ==--
+    eval (Let [] (Var "x")) [ ( "x", Num 1 ) ] --> Ok (Num 1)
+
+    eval (Let [ ( "x", Num 1 ) ] (Var "x")) [ ( "x", Num 2 ) ] --> Ok (Num 1)
+
     --== Lamda abstraction ==--
     eval (Lam "x" (Num 1)) [] --> Ok (Lam "x" (Num 1))
 
@@ -154,7 +135,7 @@ eq e1 e2 =
     --== Application ==--
     eval (App (Num 1) (Num 2)) [] --> Err (NotAFunction (Num 1))
 
-    eval (App (Var "f") (Num 1)) [] --> Err (UndefinedVar "f")
+    eval (App (Var "f") (Var "x")) [] --> Err (UndefinedVar "f")
 
     eval (App (Var "f") (Var "x")) [ ( "f", Var "f" ) ] --> Err (UndefinedVar "x")
 
@@ -192,11 +173,6 @@ eq e1 e2 =
 
     eval (eq (Var "x") (Var "y")) [ ( "x", Num 3 ), ( "y", Num 2 ) ] --> Ok (Lam "True" (Lam "False" (Var "False")))
 
-    --== Let bindings ==--
-    eval (Let [] (Var "x")) [ ( "x", Num 1 ) ] --> Ok (Num 1)
-
-    eval (Let [ ( "x", Num 1 ) ] (Var "x")) [ ( "x", Num 2 ) ] --> Ok (Num 1)
-
 -}
 eval : Expr -> Env -> Result Error Expr
 eval expr env =
@@ -216,6 +192,9 @@ eval expr env =
                 Nothing ->
                     Err (UndefinedVar x)
 
+        Let vars e ->
+            eval e (vars ++ env)
+
         Lam x e ->
             case eval e (( x, Var x ) :: env) of
                 Ok e_ ->
@@ -234,7 +213,7 @@ eval expr env =
                         eval e env
 
                     else
-                        eval e (( x, Let env e2 ) :: env)
+                        eval (Let [ ( x, Let env e2 ) ] e) env
 
                 Ok e1_ ->
                     case ( e1_, eval e2 env ) of
@@ -265,12 +244,6 @@ eval expr env =
 
                 Err err ->
                     Err err
-
-        Let (( x, ex ) :: vars) e ->
-            eval (Let vars e) (( x, ex ) :: env)
-
-        Let [] e ->
-            eval e env
 
         op ->
             Ok op
