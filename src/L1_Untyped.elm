@@ -16,6 +16,7 @@ module L1_Untyped exposing (..)
     eval (Var "f") [ ( "f", factorial ) ] --> Ok factorial
     eval (App (Var "f") (Num 0)) [ ( "f", factorial ) ] --> Ok (Num 1)
     eval (App (Var "f") (Num 1)) [ ( "f", factorial ) ] --> Ok (Num 1)
+    -- eval (App (Var "f") (Num 5)) [ ( "f", factorial ) ] -- Ok (Num 120)
 
 -}
 

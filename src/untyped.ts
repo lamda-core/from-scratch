@@ -55,7 +55,7 @@ const evaluate = (expr: Expr, env: Env): Expr => {
             let e1 = evaluate(expr.e1, env)
             switch (e1.kind) {
                 case 'Num': return Err(`Not a function: ${show(Num(e1.k))}`)
-                case 'Lam': return evaluate(Let({ [e1.x]: Let(env, expr.e2) }, e1.e), env)
+                case 'Lam': return evaluate(e1.e, { ...env, [e1.x]: Let(env, expr.e2) })
                 case 'Err': return Err(e1.err)
             }
             let e2 = evaluate(expr.e2, env)
@@ -209,3 +209,4 @@ const factorial = Lam("n", app(eq(Var("n"), Num(0)), [Num(1), mul(Var("n"), App(
 check(Var("f"), { f: factorial }, factorial)
 check(App(Var("f"), Num(0)), { f: factorial }, Num(1))
 check(App(Var("f"), Num(1)), { f: factorial }, Num(1))
+check(App(Var("f"), Num(5)), { f: factorial }, Num(120))
