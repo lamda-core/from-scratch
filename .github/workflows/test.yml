@@ -1,9 +1,9 @@
-name: Test
+name: λ
 
 on: push
 
 jobs:
-  build:
+  test:
     strategy:
       matrix:
         os: [macos-latest, ubuntu-latest]
