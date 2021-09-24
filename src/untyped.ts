@@ -59,11 +59,9 @@ const evaluate = (expr: Expr, env: Env): Expr => {
                     if (e1.kind === 'Err') return Err(e1.err)
                     const e2 = evaluate(expr.e2, env)
                     if (e2.kind === 'Err') return Err(e2.err)
-                    if (e1.kind === 'Lam') {
-                        if (e2.kind === 'Var' && e1.x == e2.x)
-                            return App(Var(expr.e1.x), e2)
-                        return evaluate(App(e1, e2), env)
-                    }
+                    if (e1.kind === 'Lam' && e2.kind === 'Var') return App(Var(expr.e1.x), e2)
+                    if (e1.kind === 'Lam' && e1.e.kind === 'Lam') return evaluate(App(e1, e2), { ...env, [expr.e1.x]: Var(expr.e1.x) })
+                    if (e1.kind === 'Lam') return evaluate(App(e1, e2), env)
                     return App(e1, e2)
                 }
                 case 'Lam': return evaluate(expr.e1.e, { ...env, [expr.e1.x]: Let(env, expr.e2) })
@@ -164,11 +162,13 @@ const showEnv = (env: Env): string =>
     + '}'
 
 const check = (e: Expr, env: Env, expected: Expr) => {
+    const start = new Date().getTime()
     const got = evaluate(e, env)
+    const elapsed = new Date().getTime() - start
     if (equals(got, expected))
-        console.log(`✅ ${show(e)}  ⊣  Γ${showEnv(env)}  ∴  ${show(got)}`)
+        console.log(`✅ ${show(e)}  ⊣  Γ${showEnv(env)}  ∴  ${show(got)}  [${elapsed}ms]`)
     else
-        console.error(`❌ ${show(e)}  ⊣  Γ${showEnv(env)}  --  got '${show(got)}'; expected '${show(expected)}'`)
+        console.error(`❌ ${show(e)}  ⊣  Γ${showEnv(env)}  [${elapsed}ms]   --  got '${show(got)}'; expected '${show(expected)}'`)
 }
 
 //-------------------------------------------
@@ -257,15 +257,13 @@ console.log('\n☯︎ Ackermann function')
     // a 0 n = n + 1
     // a m 0 = a (m-1) 1
     // a m n = a (m-1) (a m (n-1))
-
-    // a 0 = \n. n + 1
-    // a 1 = \n. (\n. n + 1) (a 1 (n-1))
-    // a 1 = \n. a 1 (n-1) + 1
     const a = Var("a")
     const m = Var("m")
     const n = Var("n")
     const k0 = Num(0)
     const k1 = Num(1)
+    const k2 = Num(2)
+    const k3 = Num(3)
 
     const ackermann =
         Lam("m", Lam("n",
@@ -278,8 +276,23 @@ console.log('\n☯︎ Ackermann function')
             ])
         ))
 
-    check(Var("a"), { a: ackermann }, ackermann)
-    check(app(Var("a"), [Var("m")]), { a: ackermann, m: Var("m") }, App(Var("a"), Var("m")))
-    check(app(Var("a"), [Var("m")]), { a: ackermann, m: Num(0) }, Lam("n", add(Var("n"), Num(1))))
-    check(app(Var("a"), [Var("m")]), { a: ackermann, m: Num(1) }, Num(0))
+    check(a, { a: ackermann }, ackermann)
+    check(app(a, [m]), { a: ackermann, m: m }, App(a, m))
+    check(app(a, [m]), { a: ackermann, m: k0 }, Lam("n", add(n, k1)))
+    check(app(a, [m]), { a: ackermann, m: k1 }, Lam("n", app(eq(n, k0), [app(a, [k0, k1]), app(a, [k0, app(a, [k1, sub(n, k1)])])])))
+    check(app(a, [m]), { a: ackermann, m: k3 }, Lam("n", app(eq(n, k0), [app(a, [k2, k1]), app(a, [k2, app(a, [k3, sub(n, k1)])])])))
+    check(app(a, [m, n]), { a: ackermann, m: k0, n: k0 }, Num(1))
+    check(app(a, [m, n]), { a: ackermann, m: k0, n: k1 }, Num(2))
+    check(app(a, [m, n]), { a: ackermann, m: k0, n: k2 }, Num(3))
+    check(app(a, [m, n]), { a: ackermann, m: k0, n: k3 }, Num(4))
+    check(app(a, [m, n]), { a: ackermann, m: k1, n: k0 }, Num(2))
+    check(app(a, [m, n]), { a: ackermann, m: k1, n: k1 }, Num(3))
+    check(app(a, [m, n]), { a: ackermann, m: k1, n: k2 }, Num(4))
+    check(app(a, [m, n]), { a: ackermann, m: k1, n: k3 }, Num(5))
+    check(app(a, [m, n]), { a: ackermann, m: k2, n: k0 }, Num(3))
+    check(app(a, [m, n]), { a: ackermann, m: k2, n: k1 }, Num(5))
+    check(app(a, [m, n]), { a: ackermann, m: k2, n: k2 }, Num(7))
+    check(app(a, [m, n]), { a: ackermann, m: k2, n: k3 }, Num(9))
+    check(app(a, [m, n]), { a: ackermann, m: k3, n: k0 }, Num(5))
+    // check(app(a, [m, n]), { a: ackermann, m: k3, n: k1 }, Num(13))
 }
