@@ -85,7 +85,7 @@ main = hspec $ do
   describe "☯︎ Factorial" $ do
     it "f  Γ{f: factorial}  ∴  factorial" $ do
       eval (Var "f") [("f", factorial)] `shouldBe` Right factorial
-    it "f n  Γ{f: factorial, n: n}  ∴  f n" $ do
+    it "f n  Γ{f: factorial, n: n}  ∴  factorial" $ do
       eval (App (Var "f") (Var "n")) [("f", factorial), ("n", Var "n")] `shouldBe` Right (app (eq n k0) [k1, mul n (App f (sub n k1))])
     it "f n  Γ{f: factorial, n: 0}  ∴  1" $ do
       eval (App (Var "f") (Var "n")) [("f", factorial), ("n", Num 0)] `shouldBe` Right (Num 1)
@@ -97,14 +97,26 @@ main = hspec $ do
       eval (App (Var "f") (Var "n")) [("f", factorial), ("n", Num 5)] `shouldBe` Right (Num 120)
 
   describe "☯︎ Ackermann" $ do
+    -- https://en.wikipedia.org/wiki/Ackermann_function
     it "a  Γ{a: ackermann}  ∴  ackermann" $ do
       eval (Var "a") [("a", ackermann)] `shouldBe` Right ackermann
+    it "a m  Γ{a: ackermann, m: m}  ∴  λn. ackermann" $ do
+      eval (App (Var "a") (Var "m")) [("a", ackermann), ("m", Var "m")] `shouldBe` Right (Lam "n" (app (eq m k0) [add n k1, app (eq n k0) [app a [sub m k1, k1], app a [sub m k1, app a [m, sub n k1]]]]))
     it "a m  Γ{a: ackermann, m: 0}  ∴  λn. n + 1" $ do
       eval (App (Var "a") (Var "m")) [("a", ackermann), ("m", Num 0)] `shouldBe` Right (Lam "n" (add n k1))
+    it "a m  Γ{a: ackermann, m: 1}  ∴  a 0" $ do
+      eval (App (Var "a") (Var "m")) [("a", ackermann), ("m", Num 1)] `shouldBe` Right (Lam "n" (app (eq n k0) [app a [sub m k1, k1], app a [sub m k1, app a [m, sub n k1]]]))
+    it "a m  Γ{a: ackermann, m: 3}  ∴  a 0" $ do
+      eval (App (Var "a") (Var "m")) [("a", ackermann), ("m", Num 3)] `shouldBe` Right (Lam "n" (app (eq n k0) [app a [sub m k1, k1], app a [sub m k1, app a [m, sub n k1]]]))
+    it "a m n  Γ{a: ackermann, m: 0, n: 0}  ∴  1" $ do
+      eval (app (Var "a") [Var "m", Var "n"]) [("a", ackermann), ("m", Num 0), ("n", Num 0)] `shouldBe` Right (Num 1)
+    it "a m n  Γ{a: ackermann, m: 1, n: 1}  ∴  3" $ do
+      eval (app (Var "a") [Var "m", Var "n"]) [("a", ackermann), ("m", Num 1), ("n", Num 1)] `shouldBe` Right (Num 3)
+    it "a m n  Γ{a: ackermann, m: 1, n: 3}  ∴  5" $ do
+      eval (app (Var "a") [Var "m", Var "n"]) [("a", ackermann), ("m", Num 1), ("n", Num 3)] `shouldBe` Right (Num 5)
+    it "a m n  Γ{a: ackermann, m: 2, n: 0}  ∴  4" $ do
+      eval (app (Var "a") [Var "m", Var "n"]) [("a", ackermann), ("m", Num 2), ("n", Num 0)] `shouldBe` Right (Num 3)
   where
-    -- it "a m  Γ{a: ackermann, m: 1}  ∴  a 0" $ do
-    --   eval (App (Var "a") (Var "m")) [("a", ackermann), ("m", Num 1)] `shouldBe` Right (Lam "n" (add n k1))
-
     a = Var "a"
     f = Var "f"
     m = Var "m"

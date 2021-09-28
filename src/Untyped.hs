@@ -3,6 +3,7 @@ module Untyped where
 data Expr
   = Num Float
   | Var String
+  | Let [(String, Expr)] Expr
   | Lam String Expr
   | App Expr Expr
   | Add
@@ -41,39 +42,38 @@ get x (_ : env) = get x env
 
 eval :: Expr -> [(String, Expr)] -> Either Error Expr
 eval (Num k) _ = Right (Num k)
-eval (Var x) env =
-  case get x env of
-    Just (Var x') | x == x' -> Right (Var x)
-    Just ex -> eval ex ((x, Var x) : env)
-    Nothing -> Left (UndefinedVar x)
-eval (Lam x e) env =
-  case eval e ((x, Var x) : env) of
-    Right e' -> Right (Lam x e')
+eval (Var x) env = case get x env of
+  Just (Var x') | x == x' -> Right (Var x)
+  Just ex -> eval ex ((x, Var x) : env)
+  Nothing -> Left (UndefinedVar x)
+eval (Let vars e) env = eval e vars
+eval (Lam x e) env = case eval e ((x, Var x) : env) of
+  Right e' -> Right (Lam x e')
+  Left err -> Left err
+eval (App e1 e2) env = case eval e1 env of
+  Right (Num k) -> Left (NotAFunction (Num k))
+  Right (Var x) -> Right (App (Var x) e2)
+  Right (Lam x e) -> eval e ((x, Let env e2) : env)
+  Right (App Add e1') -> case (e1', eval e2 env) of
+    (Num k1, Right (Num k2)) -> Right (Num (k1 + k2))
+    (_, Right e2') -> Right (App (App Add e1') e2')
+    (_, Left err) -> Left err
+  Right (App Sub e1') -> case (e1', eval e2 env) of
+    (Num k1, Right (Num k2)) -> Right (Num (k1 - k2))
+    (_, Right e2') -> Right (App (App Sub e1') e2')
+    (_, Left err) -> Left err
+  Right (App Mul e1') -> case (e1', eval e2 env) of
+    (Num k1, Right (Num k2)) -> Right (Num (k1 * k2))
+    (_, Right e2') -> Right (App (App Mul e1') e2')
+    (_, Left err) -> Left err
+  Right (App Eq e1') -> case (e1', eval e2 env) of
+    (Num k1, Right (Num k2)) | k1 == k2 -> Right (Lam "True" (Lam "False" (Var "True")))
+    (Num k1, Right (Num k2)) -> Right (Lam "True" (Lam "False" (Var "False")))
+    (_, Right e2') -> Right (App (App Eq e1') e2')
+    (_, Left err) -> Left err
+  Right (App a b) -> Right (App (App a b) e2)
+  Right op -> case eval e2 env of
+    Right e2' -> Right (App op e2')
     Left err -> Left err
-eval (App (Var x) e2) env =
-  case eval (Var x) env of
-    Right (Var x') -> Right (App (Var x') e2)
-    Right (Lam y e) -> case eval e2 env of
-      Right e2' -> eval (App (Lam y e) e2') env
-      Left err -> Left err
-    Right e1' -> eval (App e1' e2) env
-    Left err -> Left err
-eval (App e1 e2) env =
-  case eval e1 env of
-    Right (Num k) -> Left (NotAFunction (Num k))
-    Right (Var x) -> Right (App (Var x) e2)
-    Right (Lam x e) -> eval e ((x, e2) : env)
-    Right (App op (Num k1)) -> case (op, eval e2 env) of
-      (Add, Right (Num k2)) -> Right (Num (k1 + k2))
-      (Sub, Right (Num k2)) -> Right (Num (k1 - k2))
-      (Mul, Right (Num k2)) -> Right (Num (k1 * k2))
-      (Eq, Right (Num k2)) | k1 == k2 -> Right (Lam "True" (Lam "False" (Var "True")))
-      (Eq, Right (Num k2)) -> Right (Lam "True" (Lam "False" (Var "False")))
-      (_, Right e2') -> Right (App (App op (Num k1)) e2')
-      (_, Left err) -> Left err
-    Right (App a b) -> Right (App (App a b) e2)
-    Right op -> case eval e2 env of
-      Right e2' -> Right (App op e2')
-      Left err -> Left err
-    Left err -> Left err
+  Left err -> Left err
 eval op _ = Right op
