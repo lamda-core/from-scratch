@@ -1,6 +1,0 @@
-{
-  "root": "../src",
-  "tests": [
-    "L1_Untyped"
-  ]
-}
