@@ -3,4 +3,5 @@
 
 # Haskell stuff
 .stack-work/
+stack.yaml.lock
 *~
