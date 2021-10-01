@@ -64,26 +64,15 @@ eval :: Expr -> [(String, Expr)] -> Result Error Expr
 eval (Num k) _ = Ok (Num k)
 eval (Var x) env = case get x env of
   Just (Var x') | x == x' -> Ok (Var x)
-  -- Just (Lam y e) -> case eval (Lam y e) (set x (Var x) env) of
-  --   Ok (Rec env' ex) -> Ok (Rec (set x ex env') (Var x))
-  --   Ok ex -> Ok ex
-  --   Err err -> Err err
   Just (Lam y e) -> eval (Lam y e) (set x (Rec x (Var x)) env)
   Just e -> eval e (set x (Rec x e) env)
   Nothing -> Err (UndefinedVar x)
--- eval (Rec vars e) env = eval e vars
 eval (Rec x (Var x')) _ | x == x' = Ok (Rec x (Var x))
 eval (Rec x e) env = eval e env
 eval (Lam x e) env = case eval e (set x (Var x) env) of
   Ok (Rec y e') -> Ok (Rec y (Lam x e'))
   Ok e' -> Ok (Lam x e')
   Err err -> Err err
--- eval (Lam x e) env = case eval e (set x (Var x) env) of
---   Ok (Rec vars e') -> case remove x vars of
---     [] -> Ok (Lam x e')
---     vars' -> Ok (Rec vars' (Lam x e'))
---   Ok e' -> Ok (Lam x e')
---   Err err -> Err err
 eval (App (Num k) _) _ = Err (NotAFunction (Num k))
 eval (App (Var x) e2) env = case get x env of
   Just (Var x') | x == x' -> case closure e2 env of
@@ -99,65 +88,21 @@ eval (App (Rec x e1) e2) env = case eval (Rec x e1) env of
 eval (App (Lam x e) ex) env = case closure (Var x) (set x (Rec x ex) env) of
   Ok ex' -> eval e (set x ex' env)
   Err err -> Err err
-eval (App (App Add e1) e2) env = case (eval e1 env, eval e2 env) of
-  (Ok (Num k1), Ok (Num k2)) -> Ok (Num (k1 + k2))
-  (Ok e1', Ok e2') -> Ok (add e1' e2')
-  (Err err, _) -> Err err
-  (_, Err err) -> Err err
-eval (App (App Sub e1) e2) env = case (eval e1 env, eval e2 env) of
-  (Ok (Num k1), Ok (Num k2)) -> Ok (Num (k1 - k2))
-  (Ok e1', Ok e2') -> Ok (sub e1' e2')
-  (Err err, _) -> Err err
-  (_, Err err) -> Err err
-eval (App (App Mul e1) e2) env = case (eval e1 env, eval e2 env) of
-  (Ok (Num k1), Ok (Num k2)) -> Ok (Num (k1 * k2))
-  (Ok e1', Ok e2') -> Ok (mul e1' e2')
-  (Err err, _) -> Err err
-  (_, Err err) -> Err err
-eval (App (App Eq e1) e2) env = case (eval e1 env, eval e2 env) of
-  (Ok (Num k1), Ok (Num k2)) | k1 == k2 -> Ok (Lam "True" (Lam "False" (Var "True")))
-  (Ok (Num k1), Ok (Num k2)) -> Ok (Lam "True" (Lam "False" (Var "False")))
-  (Ok e1', Ok e2') -> Ok (eq e1' e2')
-  (Err err, _) -> Err err
-  (_, Err err) -> Err err
+eval (App (App op e1) e2) env | op `elem` [Add, Sub, Mul, Eq] = case (op, eval e1 env, eval e2 env) of
+  (Add, Ok (Num k1), Ok (Num k2)) -> Ok (Num (k1 + k2))
+  (Sub, Ok (Num k1), Ok (Num k2)) -> Ok (Num (k1 - k2))
+  (Mul, Ok (Num k1), Ok (Num k2)) -> Ok (Num (k1 * k2))
+  (Eq, Ok (Num k1), Ok (Num k2)) | k1 == k2 -> Ok (Lam "True" (Lam "False" (Var "True")))
+  (Eq, Ok (Num k1), Ok (Num k2)) -> Ok (Lam "True" (Lam "False" (Var "False")))
+  (_, Ok e1', Ok e2') -> Ok (App (App op e1') e2')
+  (_, Err err, _) -> Err err
+  (_, _, Err err) -> Err err
 eval (App (App a b) e2) env = case eval (App a b) env of
   Ok e1' -> eval (App e1' e2) env
   Err err -> Err err
 eval (App op e) env = case eval e env of
   Ok e' -> Ok (App op e')
   Err err -> Err err
--- eval (App e1 e2) env = case (eval e1 env, eval e2 env) of
---   (Ok (Num k), _) -> Err (NotAFunction (Num k))
---   (Ok (Var x), Ok e2') -> Ok (App (Var x) e2')
---   (Ok (Rec env1 (Var x)), Ok (Rec env2 e2')) -> Ok (Rec (merge env1 env2) (App (Var x) e2'))
---   (Ok (Rec env1 e1'), Ok (Rec env2 e2')) -> Ok (Rec (merge env1 env2) (App e1' e2'))
---   (Ok (Rec env' (Var x)), Ok e2') -> case get x env' of
---     Just (Var x') | x == x' -> Ok (Rec env' (App (Var x) e2'))
---     -- Just (Lam y (App a b)) -> case (eval a (set y e2' env'), eval b (set x (Var x) (set y e2' env'))) of
---     --   (Ok a', Ok b') -> eval (App a' b') env'
---     --   (Err err, _) -> Err err
---     --   (_, Err err) -> Err err
---     Just (Lam y (App a b)) -> case eval a (set y e2' env') of
---       Ok (Lam z e) -> eval (Rec [(z, Rec (set y e2' env') b)] e) (set y e2' env')
---       --Ok (Rec (set y e2' env') b)
---       Err err -> Err err
---     -- Just e1' -> eval (App e1' e2') (set x (Var x) env')
---     Just (Lam y (Lam z e)) -> Ok (Rec env' (App (Var x) e2'))
---     Nothing -> Err (UndefinedVar x)
---   -- (Ok (Rec env' (App a b)), Ok e2') -> case eval a env' of
---   --   TODO
---   --   Err err -> Err err
---   (Ok (Rec env' e1'), Ok e2') -> Ok (Rec env' (App e1' e2'))
---   (Ok e1', Ok (Rec env' e2')) -> Ok (Rec env' (App e1' e2'))
---   (Ok (Lam x e), Ok e2') -> eval e (set x e2' env)
---   (Ok (App Add (Num k1)), Ok (Num k2)) -> Ok (Num (k1 + k2))
---   (Ok (App Sub (Num k1)), Ok (Num k2)) -> Ok (Num (k1 - k2))
---   (Ok (App Mul (Num k1)), Ok (Num k2)) -> Ok (Num (k1 * k2))
---   (Ok (App Eq (Num k1)), Ok (Num k2)) | k1 == k2 -> Ok (Lam "True" (Lam "False" (Var "True")))
---   (Ok (App Eq (Num k1)), Ok (Num k2)) -> Ok (Lam "True" (Lam "False" (Var "False")))
---   (Ok e1', Ok e2') -> Ok (App e1' e2')
---   (Err err, _) -> Err err
---   (_, Err err) -> Err err
 eval Add _ = Ok Add
 eval Sub _ = Ok Sub
 eval Mul _ = Ok Mul
