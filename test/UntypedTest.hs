@@ -126,20 +126,18 @@ main = hspec $ do
       eval (eq (Var "x") (Var "y")) [("x", Num 3), ("y", Num 2)] `shouldBe` Ok (Lam "True" (Lam "False" (Var "False")))
 
   describe "☯︎ Simple recursion" $ do
-    it "f  Γ{f: λx. f x}  ∴  f  {f: λx. f x} f" $ do
+    it "f  Γ{f: λx. f x}  ∴  f  f = λx. f x" $ do
       eval (Var "f") [("f", Lam "x" (App (Var "f") (Var "x")))] `shouldBe` Ok (Rec "f" (Lam "x" (App (Var "f") (Var "x"))))
-  --   it "f x  Γ{f: λx. f x, x: x}  ∴  {f: λx. f x, x: x} f x" $ do
-  --     eval (App (Var "f") (Var "x")) [("f", Lam "x" (App (Var "f") (Var "x"))), ("x", Var "x")] `shouldBe` Ok (App (Rec "f" (Lam "x" (App (Var "f") (Var "x")))) (Var "x"))
-  --   it "f x  Γ{f: λx. x f, x: x}  ∴  {f: λx. f x, x: x} f x" $ do
-  --     eval (App (Var "f") (Var "x")) [("f", Lam "x" (App (Var "x") (Var "f"))), ("x", Var "x")] `shouldBe` Ok (Rec [("f", Lam "x" (App (Var "f") (Var "x"))), ("x", Var "x")] (App (Var "f") (Var "x")))
+    it "f x  Γ{f: λx. f x, x: x}  ∴  f = f x" $ do
+      eval (App (Var "f") (Var "x")) [("f", Lam "x" (App (Var "f") (Var "x"))), ("x", Var "x")] `shouldBe` Ok (Rec "f" (App (Var "f") (Var "x")))
 
-  -- describe "☯︎ Factorial" $ do
-  --   it "f  Γ{f: factorial}  ∴  {f: factorial} f" $ do
-  --     eval (Var "f") [("f", factorial)] `shouldBe` Ok (Rec [("f", factorial)] (Var "f"))
-  --   it "f n  Γ{f: factorial, n: n}  ∴  {f: factorial, n: n} f n" $ do
-  --     eval (App (Var "f") (Var "n")) [("f", factorial), ("n", Var "n")] `shouldBe` Ok (Rec [("f", factorial), ("n", Var "n")] (App (Var "f") (Var "n")))
-  --   it "f 0  Γ{f: factorial}  ∴  1" $ do
-  --     eval (App (Var "f") (Num 0)) [("f", factorial)] `shouldBe` Ok (Num 1)
+  describe "☯︎ Factorial" $ do
+    it "f  Γ{f: factorial}  ∴  recursive definition" $ do
+      eval (Var "f") [("f", factorial)] `shouldBe` Ok (Lam "n" (app (eq n k0) [k1, mul n (Rec "f" (App f (sub n k1)))]))
+    it "f n  Γ{f: factorial, n: n}  ∴  recursive application" $ do
+      eval (App (Var "f") (Var "n")) [("f", factorial), ("n", Var "n")] `shouldBe` Ok (app (eq n k0) [k1, mul n (Rec "f" (App f (sub n k1)))])
+    it "f 0  Γ{f: factorial}  ∴  1" $ do
+      eval (App (Var "f") (Num 0)) [("f", factorial)] `shouldBe` Ok (Num 1)
   --   it "f 1  Γ{f: factorial}  ∴  1" $ do
   --     eval (App (Var "f") (Num 1)) [("f", factorial)] `shouldBe` Ok (Num 1)
   --   it "f 2  Γ{f: factorial}  ∴  2" $ do
