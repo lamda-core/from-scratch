@@ -2,14 +2,7 @@
 
 ## Before you begin
 
-Make sure you have the following installed:
-
-1. [Haskell](https://www.haskell.org/ghcup/) with `stack`.
-
-    ```sh
-    # For Linux, MacOS, FreeBSD or WSL2
-    curl --proto '=https' --tlsv1.2 -sSf https://get-ghcup.haskell.org | sh
-    ```
+Make sure you have [Haskell](https://www.haskell.org/ghcup/) with `stack` installed.
 
 ## Running tests
 
