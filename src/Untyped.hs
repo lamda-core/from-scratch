@@ -1,13 +1,11 @@
 module Untyped where
 
-import System.Posix.Internals (c_dup2)
-
 data Expr
   = Num Float
   | Var String
-  | Rec String Expr
   | Lam String Expr
   | App Expr Expr
+  | Rec String Expr
   | Add
   | Sub
   | Mul
@@ -45,42 +43,35 @@ get x [] = Nothing
 get x ((x', ex) : env) | x == x' = Just ex
 get x (_ : env) = get x env
 
-set :: String -> Expr -> [(String, Expr)] -> [(String, Expr)]
-set x ex [] = [(x, ex)]
-set x ex ((x', _) : env) | x == x' = (x, ex) : env
-set x ex ((y, ey) : env) = (y, ey) : set x ex env
-
-remove :: String -> [(String, Expr)] -> [(String, Expr)]
-remove _ [] = []
-remove x ((x', ex) : env) | x == x' = remove x env
-remove x ((y, ey) : env) = (y, ey) : remove x env
-
-merge :: [(String, Expr)] -> [(String, Expr)] -> [(String, Expr)]
-merge [] env2 = env2
-merge ((x, ex) : env1) env2 = case get x env2 of
-  Just _ -> merge env1 env2
-  Nothing -> (x, ex) : merge env1 env2
-
 eval :: Expr -> [(String, Expr)] -> Result Error Expr
-eval (Num k) _ = Ok (Num k)
-eval (Var x) env = case get x env of
+eval expr env = case reduce expr env of
+  Ok (App e1 e2) -> case (eval e1 env, eval e2 env) of
+    (Ok (Lam x e), Ok e2') -> eval (App (Lam x e) e2') env
+    (Ok (Rec x (Lam y e)), Ok e2') -> eval (App (Lam y e) e2') env
+    (Ok (App op (Num k1)), Ok (Num k2)) | op `elem` [Add, Sub, Mul, Eq] -> eval (App (App op (Num k1)) (Num k2)) env
+    (Ok e1', Ok e2') -> Ok (App e1' e2')
+    (Err err, _) -> Err err
+    (_, Err err) -> Err err
+  Ok e' -> Ok e'
+  Err err -> Err err
+
+reduce :: Expr -> [(String, Expr)] -> Result Error Expr
+reduce (Num k) _ = Ok (Num k)
+reduce (Var x) env = case get x env of
   Just (Var x') | x == x' -> Ok (Var x)
-  Just e -> eval e (set x (Rec x (Var x)) env)
+  Just e -> reduce e ((x, Rec x (Var x)) : env)
   Nothing -> Err (UndefinedVar x)
-eval (Rec x (Var x')) _ | x == x' = Ok (Rec x (Var x))
-eval (Rec x e) env = eval e (set x (Rec x (Var x)) env)
-eval (Lam x e) env = case eval e (set x (Var x) env) of
+reduce (Lam x e) env = case reduce e ((x, Var x) : env) of
   Ok (Rec y e') -> Ok (Rec y (Lam x e'))
   Ok e' -> Ok (Lam x e')
   Err err -> Err err
-eval (App e1 e2) env = case (eval e1 env, eval e2 env) of
-  (Ok (Num k), Ok _) -> Err (NotAFunction (Num k))
-  (Ok (Var x), Ok e2') | e1 == Var x -> Ok (App (Var x) e2')
-  (Ok (Rec x (Lam y e)), Ok e2') -> eval e (set x (Rec x (Var x)) $ set y e2' env)
-  (Ok (Rec x e1'), Ok e2') -> Ok (Rec x (App e1' e2))
-  (Ok (Lam x e), Ok e2') -> eval e (set x e2' env)
-  -- TODO: save the recursive definition: Rec (String, Expr) Expr
-  -- (Ok (App op e1'), Ok (Rec x e2')) -> Err (NotImplemented "+" (Rec x e2') env)
+reduce (App e1 e2) env = case (reduce e1 env, reduce e2 env) of
+  (Ok (Num k), _) -> Err (NotAFunction (Num k))
+  (Ok (Lam x e), Ok e2') -> reduce e ((x, e2') : env)
+  (Ok (Rec x (Lam y e)), Ok e2') -> Ok (App (Rec x (Lam y e)) e2')
+  (Ok (Rec x e1'), Ok (Rec x' e2')) | x == x' -> Ok (Rec x (App e1' e2'))
+  (Ok (Rec x e1'), Ok e2') -> Ok (Rec x (App e1' e2'))
+  (Ok e1', Ok (Rec x e2')) -> Ok (Rec x (App e1' e2'))
   (Ok (App Add (Num k1)), Ok (Num k2)) -> Ok (Num (k1 + k2))
   (Ok (App Sub (Num k1)), Ok (Num k2)) -> Ok (Num (k1 - k2))
   (Ok (App Mul (Num k1)), Ok (Num k2)) -> Ok (Num (k1 * k2))
@@ -89,4 +80,6 @@ eval (App e1 e2) env = case (eval e1 env, eval e2 env) of
   (Ok e1', Ok e2') -> Ok (App e1' e2')
   (Err err, _) -> Err err
   (_, Err err) -> Err err
-eval e _ = Ok e
+reduce (Rec x (Var x')) _ | x == x' = Ok (Rec x (Var x))
+reduce (Rec x e) env = reduce e ((x, Rec x (Var x)) : env)
+reduce e _ = Ok e

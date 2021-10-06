@@ -3,16 +3,6 @@ import Untyped
 
 main :: IO ()
 main = hspec $ do
-  describe "☯︎ Merge" $ do
-    it "{x: 1} {x: 1}  ∴  {x: 1}" $ do
-      merge [("x", Num 1)] [("x", Num 1)] `shouldBe` [("x", Num 1)]
-    it "{x: 1} {x: 2}  ∴  {x: 1}" $ do
-      merge [("x", Num 1)] [("x", Num 2)] `shouldBe` [("x", Num 2)]
-    it "{x: 1} {y: 2}  ∴  {x: 1, y: 2}" $ do
-      merge [("x", Num 1)] [("y", Num 2)] `shouldBe` [("x", Num 1), ("y", Num 2)]
-    it "{x: 1, y: 2} {z: 3, w: 4}  ∴  {x: 1, y: 2}" $ do
-      merge [("x", Num 1), ("y", Num 2)] [("z", Num 3), ("w", Num 4)] `shouldBe` [("x", Num 1), ("y", Num 2), ("z", Num 3), ("w", Num 4)]
-
   describe "☯︎ Number" $ do
     it "1  ∴  1" $ do
       eval (Num 1) [] `shouldBe` Ok (Num 1)
@@ -20,42 +10,16 @@ main = hspec $ do
   describe "☯︎ Variable" $ do
     it "x  ∴  Undefined variable: x" $ do
       eval (Var "x") [] `shouldBe` Err (UndefinedVar "x")
-    it "x  Γ{x: 1}  ∴  1" $ do
-      eval (Var "x") [("x", Num 1)] `shouldBe` Ok (Num 1)
     it "x  Γ{x: x}  ∴  x" $ do
       eval (Var "x") [("x", Var "x")] `shouldBe` Ok (Var "x")
     it "x  Γ{y: 1, x: y}  ∴  1" $ do
       eval (Var "x") [("y", Num 1), ("x", Var "y")] `shouldBe` Ok (Num 1)
-  -- it "x  Γ{x: λy. y}  ∴  λy. y" $ do
-  --   eval (Var "x") [("x", Lam "y" (Var "y"))] `shouldBe` Ok (Lam "y" (Var "y"))
-  -- it "x  Γ{x: f = f}  ∴  f = f" $ do
-  --   eval (Var "x") [("x", Rec "f" (Var "f"))] `shouldBe` Ok (Rec "f" (Var "f"))
 
-  -- describe "☯︎ Rec bindings" $ do
-  --   it "{} 1  ∴  1" $ do
-  --     eval (Rec [] (Num 1)) [] `shouldBe` Ok (Num 1) []
-  --   it "{} x  ∴  Undefined variable: x" $ do
-  --     eval (Rec [] (Var "x")) [] `shouldBe` Err (UndefinedVar "x")
-  --   it "{} ({} 1)  ∴  1" $ do
-  --     eval (Rec [] (Rec [] (Num 1))) [] `shouldBe` Ok (Num 1) []
-  --   it "{} (λx. 1)  ∴  λx. 1" $ do
-  --     eval (Rec [] (Lam "x" (Num 1))) [] `shouldBe` Ok (Lam "x" (Num 1)) []
-
-  describe "☯︎ Recursive definition" $ do
-    it "x = x  ∴  x = x" $ do
-      eval (Rec "x" (Var "x")) [] `shouldBe` Ok (Rec "x" (Var "x"))
-    it "x = 1  ∴  1" $ do
-      eval (Rec "f" (Num 1)) [] `shouldBe` Ok (Num 1)
-
-  describe "☯︎ λ Abstraction" $ do
+  describe "☯︎ λ Lamda abstraction" $ do
     it "λx. y  ∴  Undefined variable: y" $ do
       eval (Lam "x" (Var "y")) [] `shouldBe` Err (UndefinedVar "y")
-    it "λx. 1  ∴  λx. 1" $ do
-      eval (Lam "x" (Num 1)) [] `shouldBe` Ok (Lam "x" (Num 1))
     it "λx. x  ∴  λx. x" $ do
       eval (Lam "x" (Var "x")) [] `shouldBe` Ok (Lam "x" (Var "x"))
-    it "λx. y  Γ{y: y}  ∴  λx. y" $ do
-      eval (Lam "x" (Var "y")) [("y", Var "y")] `shouldBe` Ok (Lam "x" (Var "y"))
 
   describe "☯︎ Application" $ do
     it "1 2  ∴  Not a function" $ do
@@ -66,20 +30,12 @@ main = hspec $ do
       eval (App (Var "f") (Var "x")) [("f", Var "f")] `shouldBe` Err (UndefinedVar "x")
     it "f 1  Γ{f: f}  ∴  f 1" $ do
       eval (App (Var "f") (Num 1)) [("f", Var "f")] `shouldBe` Ok (App (Var "f") (Num 1))
-    it "f x  Γ{f: f, x: x}  ∴  f x" $ do
-      eval (App (Var "f") (Var "x")) [("f", Var "f"), ("x", Var "x")] `shouldBe` Ok (App (Var "f") (Var "x"))
-    it "(f = f) 1  ∴  f = f 1" $ do
-      eval (App (Rec "f" (Var "f")) (Num 1)) [] `shouldBe` Ok (Rec "f" (App (Var "f") (Num 1)))
     it "(λx. 1) 2  ∴  1" $ do
       eval (App (Lam "x" (Num 1)) (Num 2)) [] `shouldBe` Ok (Num 1)
     it "(λx. x) 1  ∴  1" $ do
       eval (App (Lam "x" (Var "x")) (Num 1)) [] `shouldBe` Ok (Num 1)
-    it "f 2  Γ{f: λx. 1}  ∴  1" $ do
-      eval (App (Var "f") (Num 2)) [("f", Lam "x" (Num 1))] `shouldBe` Ok (Num 1)
     it "((λx. x) (λy. y)) 1  ∴  1" $ do
       eval (App (App (Lam "x" (Var "x")) (Lam "y" (Var "y"))) (Num 1)) [] `shouldBe` Ok (Num 1)
-  --   it "((λx. x) (λy. x)) 1  ∴  1" $ do
-  --     eval (App (App (Lam "x" (Var "x")) (Lam "y" (Var "x"))) (Num 1)) [] `shouldBe` Ok (Num 1)
 
   describe "☯︎ Addition" $ do
     it "(+)  ∴  (+)" $ do
@@ -96,7 +52,7 @@ main = hspec $ do
       eval Sub [] `shouldBe` Ok Sub
     it "(-) x  Γ{x: x}  ∴  (-) x" $ do
       eval (App Sub (Var "x")) [("x", Var "x")] `shouldBe` Ok (App Sub (Var "x"))
-    it "(-) x y  Γ{x: x, y: y}  ∴  x - y  Γ{x: x, y: y}" $ do
+    it "(-) x y  Γ{x: x, y: y}  ∴  x - y" $ do
       eval (sub (Var "x") (Var "y")) [("x", Var "x"), ("y", Var "y")] `shouldBe` Ok (sub (Var "x") (Var "y"))
     it "(-) x y  Γ{x: 1, y: 2}  ∴  -1" $ do
       eval (sub (Var "x") (Var "y")) [("x", Num 1), ("y", Num 2)] `shouldBe` Ok (Num (-1))
@@ -106,7 +62,7 @@ main = hspec $ do
       eval Mul [] `shouldBe` Ok Mul
     it "(*) x  Γ{x: x}  ∴  (*) x" $ do
       eval (App Mul (Var "x")) [("x", Var "x")] `shouldBe` Ok (App Mul (Var "x"))
-    it "(*) x y  Γ{x: x, y: y}  ∴  x * y  Γ{x: x, y: y}" $ do
+    it "(*) x y  Γ{x: x, y: y}  ∴  x * y" $ do
       eval (mul (Var "x") (Var "y")) [("x", Var "x"), ("y", Var "y")] `shouldBe` Ok (mul (Var "x") (Var "y"))
     it "(*) x y  Γ{x: 1, y: 2}  ∴  2" $ do
       eval (mul (Var "x") (Var "y")) [("x", Num 1), ("y", Num 2)] `shouldBe` Ok (Num 2)
@@ -116,7 +72,7 @@ main = hspec $ do
       eval Eq [] `shouldBe` Ok Eq
     it "(==) x  Γ{x: x}  ∴  (==) x" $ do
       eval (App Eq (Var "x")) [("x", Var "x")] `shouldBe` Ok (App Eq (Var "x"))
-    it "(==) x y  Γ{x: x, y: y}  ∴  x == y  Γ{x: x, y: y}" $ do
+    it "(==) x y  Γ{x: x, y: y}  ∴  x == y" $ do
       eval (eq (Var "x") (Var "y")) [("x", Var "x"), ("y", Var "y")] `shouldBe` Ok (eq (Var "x") (Var "y"))
     it "(==) x y  Γ{x: 1, y: 2}  ∴  λTrue False. False" $ do
       eval (eq (Var "x") (Var "y")) [("x", Num 1), ("y", Num 2)] `shouldBe` Ok (Lam "True" (Lam "False" (Var "False")))
@@ -125,37 +81,55 @@ main = hspec $ do
     it "(==) x y  Γ{x: 3, y: 2}  ∴  λTrue False. False" $ do
       eval (eq (Var "x") (Var "y")) [("x", Num 3), ("y", Num 2)] `shouldBe` Ok (Lam "True" (Lam "False" (Var "False")))
 
-  describe "☯︎ Simple recursion" $ do
-    it "f  Γ{f: λx. f x}  ∴  f  f = λx. f x" $ do
-      eval (Var "f") [("f", Lam "x" (App (Var "f") (Var "x")))] `shouldBe` Ok (Rec "f" (Lam "x" (App (Var "f") (Var "x"))))
-    it "f x  Γ{f: λx. f x, x: x}  ∴  f = f x" $ do
-      eval (App (Var "f") (Var "x")) [("f", Lam "x" (App (Var "f") (Var "x"))), ("x", Var "x")] `shouldBe` Ok (Rec "f" (App (Var "f") (Var "x")))
+  describe "☯︎ Recursive definition" $ do
+    it "x@1  ∴  1" $ do
+      eval (Rec "x" (Num 1)) [] `shouldBe` Ok (Num 1)
+    it "x@x  ∴  x@x" $ do
+      eval (Rec "x" (Var "x")) [] `shouldBe` Ok (Rec "x" (Var "x"))
+    it "λy. x@x  ∴  @(λy. x)" $ do
+      eval (Lam "y" (Rec "x" (Var "x"))) [] `shouldBe` Ok (Rec "x" (Lam "y" (Var "x")))
+    it "x@x y  Γ{y: y}  ∴  x@(x y)" $ do
+      eval (App (Rec "x" (Var "x")) (Var "y")) [("y", Var "y")] `shouldBe` Ok (Rec "x" (App (Var "x") (Var "y")))
+    it "x y@y  Γ{x: x}  ∴  y@(x y)" $ do
+      eval (App (Var "x") (Rec "y" (Var "y"))) [("x", Var "x")] `shouldBe` Ok (Rec "y" (App (Var "x") (Var "y")))
 
   describe "☯︎ Factorial" $ do
-    it "f  Γ{f: factorial}  ∴  recursive definition" $ do
-      eval (Var "f") [("f", factorial)] `shouldBe` Ok (Lam "n" (app (eq n k0) [k1, mul n (Rec "f" (App f (sub n k1)))]))
-    it "f n  Γ{f: factorial, n: n}  ∴  recursive application" $ do
-      eval (App (Var "f") (Var "n")) [("f", factorial), ("n", Var "n")] `shouldBe` Ok (app (eq n k0) [k1, mul n (Rec "f" (App f (sub n k1)))])
+    it "f  Γ{f: factorial}  ∴  f@factorial" $ do
+      eval (Var "f") [("f", factorial)] `shouldBe` Ok (Rec "f" factorial)
     it "f 0  Γ{f: factorial}  ∴  1" $ do
       eval (App (Var "f") (Num 0)) [("f", factorial)] `shouldBe` Ok (Num 1)
-  --   it "f 1  Γ{f: factorial}  ∴  1" $ do
-  --     eval (App (Var "f") (Num 1)) [("f", factorial)] `shouldBe` Ok (Num 1)
-  --   it "f 2  Γ{f: factorial}  ∴  2" $ do
-  --     eval (App (Var "f") (Num 2)) [("f", factorial)] `shouldBe` Ok (Num 2)
-  --   it "f 5  Γ{f: factorial}  ∴  120" $ do
-  --     eval (App (Var "f") (Num 5)) [("f", factorial)] `shouldBe` Ok (Num 120)
+    it "f 1  Γ{f: factorial}  ∴  1" $ do
+      eval (App (Var "f") (Num 1)) [("f", factorial)] `shouldBe` Ok (Num 1)
+    it "f 2  Γ{f: factorial}  ∴  2" $ do
+      eval (App (Var "f") (Num 2)) [("f", factorial)] `shouldBe` Ok (Num 2)
+    it "f 5  Γ{f: factorial}  ∴  120" $ do
+      eval (App (Var "f") (Num 5)) [("f", factorial)] `shouldBe` Ok (Num 120)
 
-  -- describe "☯︎ Ackermann" $ do
-  --   it "a  Γ{a: ackermann}  ∴  {a: ackermann} a" $ do
-  --     eval (Var "a") [("a", ackermann)] `shouldBe` Ok (Rec [("a", ackermann)] (Var "a"))
-  --   it "a m  Γ{a: ackermann, m: m}  ∴  {a: ackermann, m: m} a m" $ do
-  --     eval (App (Var "a") (Var "m")) [("a", ackermann), ("m", Var "m")] `shouldBe` Ok (Rec [("a", ackermann), ("m", Var "m")] (App (Var "a") (Var "m")))
-  --   it "a 0  Γ{a: ackermann}  ∴  {a: ackermann} a 0" $ do
-  --     eval (App (Var "a") (Num 0)) [("a", ackermann)] `shouldBe` Ok (Rec [("a", ackermann)] (App (Var "a") (Num 0)))
-  --   it "a 0 0  Γ{a: ackermann}  ∴  1" $ do
-  --     eval (app (Var "a") [Num 0, Num 0]) [("a", ackermann)] `shouldBe` Ok (Num 1)
-
-  it "asdf" $ do 1 `shouldBe` 1
+  describe "☯︎ Ackermann" $ do
+    it "a  Γ{a: ackermann}  ∴  a@ackermann" $ do
+      eval (Var "a") [("a", ackermann)] `shouldBe` Ok (Rec "a" ackermann)
+    it "a 0  Γ{a: ackermann}  ∴  λn. n + 1" $ do
+      eval (App (Var "a") (Num 0)) [("a", ackermann)] `shouldBe` Ok (Lam "n" (add (Var "n") (Num 1)))
+    it "a 0 0  Γ{a: ackermann}  ∴  1" $ do
+      eval (app (Var "a") [Num 0, Num 0]) [("a", ackermann)] `shouldBe` Ok (Num 1)
+    it "a 0 1  Γ{a: ackermann}  ∴  2" $ do
+      eval (app (Var "a") [Num 0, Num 1]) [("a", ackermann)] `shouldBe` Ok (Num 2)
+    it "a 1 0  Γ{a: ackermann}  ∴  2" $ do
+      eval (app (Var "a") [Num 1, Num 0]) [("a", ackermann)] `shouldBe` Ok (Num 2)
+    it "a 1 1  Γ{a: ackermann}  ∴  3" $ do
+      eval (app (Var "a") [Num 1, Num 1]) [("a", ackermann)] `shouldBe` Ok (Num 3)
+    it "a 1 2  Γ{a: ackermann}  ∴  4" $ do
+      eval (app (Var "a") [Num 1, Num 2]) [("a", ackermann)] `shouldBe` Ok (Num 4)
+    it "a 2 1  Γ{a: ackermann}  ∴  5" $ do
+      eval (app (Var "a") [Num 2, Num 1]) [("a", ackermann)] `shouldBe` Ok (Num 5)
+    it "a 2 2  Γ{a: ackermann}  ∴  7" $ do
+      eval (app (Var "a") [Num 2, Num 2]) [("a", ackermann)] `shouldBe` Ok (Num 7)
+    it "a 3 1  Γ{a: ackermann}  ∴  13" $ do
+      eval (app (Var "a") [Num 3, Num 1]) [("a", ackermann)] `shouldBe` Ok (Num 13)
+    it "a 3 2  Γ{a: ackermann}  ∴  29" $ do
+      eval (app (Var "a") [Num 3, Num 2]) [("a", ackermann)] `shouldBe` Ok (Num 29)
+    it "a 3 3  Γ{a: ackermann}  ∴  61" $ do
+      eval (app (Var "a") [Num 3, Num 3]) [("a", ackermann)] `shouldBe` Ok (Num 61)
   where
     a = Var "a"
     f = Var "f"
