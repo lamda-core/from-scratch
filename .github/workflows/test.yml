@@ -6,7 +6,7 @@ jobs:
   test:
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-latest, macos-latest]
 
     runs-on: ${{ matrix.os }}
 
@@ -22,7 +22,7 @@ jobs:
         uses: actions/cache@v2
         with:
           path: |
-            ${HOME}/.stack
+            ~/.stack
             .stack-work
           # Best effort for cache: tie it to Stack resolver and package config
           key: ${{ matrix.os }}-stack-${{ hashFiles('stack.yaml.lock', 'package.yaml') }}
