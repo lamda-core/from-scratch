@@ -4,18 +4,17 @@
 
 Make sure you have the following installed:
 
-1. [Node.js runtime](https://nodejs.org)
-
-1. [Elm language](https://guide.elm-lang.org/install/elm.html)
-
-1. Elm tools:
+1. [Haskell](https://www.haskell.org/ghcup/) with `stack`.
 
     ```sh
-    sudo npm install -g elm-format elm-test elm-verify-examples
+    # For Linux, MacOS, FreeBSD or WSL2
+    curl --proto '=https' --tlsv1.2 -sSf https://get-ghcup.haskell.org | sh
     ```
 
 ## Running tests
 
 ```sh
-elm-verify-examples --run-tests
+stack test
 ```
+
+> ℹ️ It might take several minutes to run the first time since it will download, compile, and install everything.
