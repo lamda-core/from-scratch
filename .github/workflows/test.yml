@@ -22,7 +22,7 @@ jobs:
         uses: actions/cache@v2
         with:
           path: |
-            ~/.stack
+            ${HOME}/.stack
             .stack-work
           # Best effort for cache: tie it to Stack resolver and package config
           key: ${{ matrix.os }}-stack-${{ hashFiles('stack.yaml.lock', 'package.yaml') }}
