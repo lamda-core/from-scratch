@@ -15,7 +15,6 @@ data Expr
 data Error
   = NotAFunction Expr
   | UndefinedVar String
-  | NotImplemented String Expr [(String, Expr)]
   deriving (Show, Eq)
 
 data Result err a
