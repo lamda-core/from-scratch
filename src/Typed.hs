@@ -1,12 +1,12 @@
 module Typed where
 
 data Expr
-  = Num Float
-  | Var String
-  | Lam String Expr
-  | App Expr Expr
-  | Rec String Expr
-  | Ann Expr Type
+  = Num !Float
+  | Var !String
+  | Lam !String !Expr
+  | App !Expr !Expr
+  | Rec !String !Expr
+  | Ann !Expr !Type
   | Add
   | Sub
   | Mul
@@ -16,11 +16,14 @@ data Expr
 data Type
   = TypT
   | NumT
+  | FunT Type Type
   deriving (Show, Eq)
 
 data Error
-  = UndefinedVar String
-  | TypeMismatch Expr Type
+  = MissingType String
+  | NotAFunction Expr
+  | TypeMismatch Expr Type Type
+  | UndefinedVar String
   deriving (Show, Eq)
 
 data Result err a
@@ -48,17 +51,17 @@ get x [] = Nothing
 get x ((x', etx) : env) | x == x' = Just etx
 get x (_ : env) = get x env
 
-eval :: Expr -> [(String, (Expr, Type))] -> Result Error (Expr, Type)
-eval expr env = case reduce expr env of
-  -- Ok (App e1 e2) -> case (eval e1 env, eval e2 env) of
-  --   (Ok (Lam x e), Ok e2') -> eval (App (Lam x e) e2') env
-  --   (Ok (Rec x (Lam y e)), Ok e2') -> eval (App (Lam y e) e2') env
-  --   (Ok (App op (Num k1)), Ok (Num k2)) | op `elem` [Add, Sub, Mul, Eq] -> eval (App (App op (Num k1)) (Num k2)) env
-  --   (Ok e1', Ok e2') -> Ok (App e1' e2')
-  --   (Err err, _) -> Err err
-  --   (_, Err err) -> Err err
-  Ok e' -> Ok e'
-  Err err -> Err err
+-- eval :: Expr -> [(String, (Expr, Type))] -> Result Error (Expr, Type)
+-- eval expr env = case reduce expr env of
+--   -- Ok (App e1 e2) -> case (eval e1 env, eval e2 env) of
+--   --   (Ok (Lam x e), Ok e2') -> eval (App (Lam x e) e2') env
+--   --   (Ok (Rec x (Lam y e)), Ok e2') -> eval (App (Lam y e) e2') env
+--   --   (Ok (App op (Num k1)), Ok (Num k2)) | op `elem` [Add, Sub, Mul, Eq] -> eval (App (App op (Num k1)) (Num k2)) env
+--   --   (Ok e1', Ok e2') -> Ok (App e1' e2')
+--   --   (Err err, _) -> Err err
+--   --   (_, Err err) -> Err err
+--   Ok e' -> Ok e'
+--   Err err -> Err err
 
 reduce :: Expr -> [(String, (Expr, Type))] -> Result Error (Expr, Type)
 reduce (Num k) _ = Ok (Num k, NumT)
@@ -66,18 +69,16 @@ reduce (Var x) env = case get x env of
   Just (Var x', t) | x == x' -> Ok (Var x, t)
   Just (e, t) -> reduce (Ann e t) ((x, (Rec x (Var x), t)) : env)
   Nothing -> Err (UndefinedVar x)
--- Type checking
-reduce (Ann (Num k) NumT) _ = Ok (Num k, NumT)
-reduce (Ann (Var x) t) env = case get x env of
-  Just (e, t') | t == t' -> eval (Ann e t') env
-  Just (_, t') -> Err (TypeMismatch (Var x) t')
-  Nothing -> Err (UndefinedVar x)
-reduce (Ann e t) _ = Err (TypeMismatch e t)
+reduce (Lam x e) _ = Err (MissingType x)
+-- reduce (App e1 e2) env =
+reduce (Ann (Lam x e) (FunT t1 t2)) env = case reduce (Ann e t2) ((x, (Var x, t1)) : env) of
+  Ok (e', t') -> Ok (Lam x e', FunT t1 t')
+  Err err -> Err err
+reduce (Ann e t) env = case reduce e env of
+  Ok (e', t') | t == t' -> Ok (e', t')
+  Ok (_, t') -> Err (TypeMismatch e t t')
+  Err err -> Err err
 
--- reduce (Lam x e) env = case reduce e ((x, Var x) : env) of
---   Ok (Rec y e') -> Ok (Rec y (Lam x e'))
---   Ok e' -> Ok (Lam x e')
---   Err err -> Err err
 -- reduce (App e1 e2) env = case (reduce e1 env, reduce e2 env) of
 --   (Ok (Num k), _) -> Err (NotAFunction (Num k))
 --   (Ok (Lam x e), Ok e2') -> reduce e ((x, e2') : env)
