@@ -2,20 +2,12 @@
 
 ## Before you begin
 
-Make sure you have the following installed:
-
-1. [Node.js runtime](https://nodejs.org)
-
-1. [Elm language](https://guide.elm-lang.org/install/elm.html)
-
-1. Elm tools:
-
-    ```sh
-    sudo npm install -g elm-format elm-test elm-verify-examples
-    ```
+Make sure you have [Haskell](https://www.haskell.org/ghcup/) with `stack` installed.
 
 ## Running tests
 
 ```sh
-elm-verify-examples --run-tests
+stack test
 ```
+
+> ℹ️ It might take several minutes to run the first time since it will download, compile, and install everything.

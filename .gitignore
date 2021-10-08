@@ -1,8 +1,7 @@
-# elm-package generated files
-elm-stuff
+# VS Code
+.vscode/
 
-# elm-repl generated files
-repl-temp-*
-
-# elm-verify-examples files
-tests/VerifyExamples
+# Haskell stuff
+.stack-work/
+stack.yaml.lock
+*~

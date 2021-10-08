@@ -6,26 +6,28 @@ jobs:
   test:
     strategy:
       matrix:
-        os: [macos-latest, ubuntu-latest]
+        os: [ubuntu-latest, macos-latest]
 
     runs-on: ${{ matrix.os }}
 
     steps:
       - uses: actions/checkout@v2
 
-      - name: Setup Elm
-        uses: jorelali/setup-elm@v3
+      - name: Setup Haskell
+        uses: haskell/actions/setup@v1
+        with: 
+          enable-stack: true
 
-      - name: Cache tooling
+      - name: Cache build
         uses: actions/cache@v2
         with:
-          path: ${HOME}/bin
-          key: tooling-${{ matrix.os }}
-
-      - name: Install tooling
-        run: npm install -g elm-verify-examples
-        env:
-          NPM_CONFIG_PREFIX: ${HOME}
+          path: |
+            ~/.stack
+            .stack-work
+          # Best effort for cache: tie it to Stack resolver and package config
+          key: ${{ matrix.os }}-stack-${{ hashFiles('stack.yaml.lock', 'package.yaml') }}
+          restore-keys: |
+            ${{ matrix.os }}-stack
 
       - name: Run tests
-        run: ${HOME}/bin/elm-verify-examples --run-tests
+        run: stack test
