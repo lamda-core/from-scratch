@@ -68,17 +68,14 @@ eval expr env = case reduce expr env of
 
 reduce :: Expr -> List (Tuple String Expr) -> Result Error Expr
 reduce (Num k) _ = Ok (Num k)
-
 reduce (Var x) env = case get x env of
   Just (Var x') | x == x' -> Ok (Var x)
   Just e -> reduce e (Cons (Tuple x (Rec x $ Var x)) env)
   Nothing -> Err (UndefinedVar x)
-
 reduce (Lam x e) env = case reduce e (Cons (Tuple x (Var x)) env) of
   Ok (Rec y e') -> Ok (Rec y $ Lam x e')
   Ok e' -> Ok (Lam x e')
   Err err -> Err err
-
 reduce (App e1 e2) env = case Tuple (reduce e1 env) (reduce e2 env) of
   Tuple (Ok (Num k)) _ -> Err (NotAFunction (Num k))
   Tuple (Ok (Lam x e)) (Ok e2') -> reduce e (Cons (Tuple x e2') env)
@@ -95,8 +92,6 @@ reduce (App e1 e2) env = case Tuple (reduce e1 env) (reduce e2 env) of
   Tuple (Ok e1') (Ok e2') -> Ok (App e1' e2')
   Tuple (Err err) _ -> Err err
   Tuple _ (Err err) -> Err err
-
 reduce (Rec x (Var x')) _ | x == x' = Ok (Rec x $ Var x)
 reduce (Rec x e) env = reduce e (Cons (Tuple x (Rec x $ Var x)) env)
-
 reduce e _ = Ok e

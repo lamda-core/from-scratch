@@ -2,20 +2,14 @@
 
 ## Before you begin
 
-Make sure you have the following installed:
+Make sure you have [PureScript](https://www.purescript.org) with `spago` installed:
 
-1. [Node.js runtime](https://nodejs.org)
-
-1. [Elm language](https://guide.elm-lang.org/install/elm.html)
-
-1. Elm tools:
-
-    ```sh
-    sudo npm install -g elm-format elm-test elm-verify-examples
-    ```
+```sh
+npm install -g purescript spago
+```
 
 ## Running tests
 
 ```sh
-elm-verify-examples --run-tests
+spago test
 ```
