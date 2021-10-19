@@ -2,7 +2,7 @@ module Untyped where
 
 import Data.Array (elem)
 import Data.Generic.Rep (class Generic)
-import Data.List (List(..))
+import Data.List (List(..), (:))
 import Data.Maybe (Maybe(..))
 import Data.Show.Generic (genericShow)
 import Data.Tuple (Tuple(..))
@@ -51,8 +51,8 @@ eq = app2 Eq
 
 get :: String -> List (Tuple String Expr) -> Maybe Expr
 get _ Nil = Nothing
-get x (Cons (Tuple x' ex) _) | x == x' = Just ex
-get x (Cons _ env) = get x env
+get x (Tuple x' ex : _) | x == x' = Just ex
+get x (_ : env) = get x env
 
 eval :: Expr -> List (Tuple String Expr) -> Result Error Expr
 eval expr env = case reduce expr env of
@@ -70,15 +70,15 @@ reduce :: Expr -> List (Tuple String Expr) -> Result Error Expr
 reduce (Num k) _ = Ok (Num k)
 reduce (Var x) env = case get x env of
   Just (Var x') | x == x' -> Ok (Var x)
-  Just e -> reduce e (Cons (Tuple x (Rec x $ Var x)) env)
+  Just e -> reduce e (Tuple x (Rec x $ Var x) : env)
   Nothing -> Err (UndefinedVar x)
-reduce (Lam x e) env = case reduce e (Cons (Tuple x (Var x)) env) of
+reduce (Lam x e) env = case reduce e (Tuple x (Var x) : env) of
   Ok (Rec y e') -> Ok (Rec y $ Lam x e')
   Ok e' -> Ok (Lam x e')
   Err err -> Err err
 reduce (App e1 e2) env = case Tuple (reduce e1 env) (reduce e2 env) of
   Tuple (Ok (Num k)) _ -> Err (NotAFunction (Num k))
-  Tuple (Ok (Lam x e)) (Ok e2') -> reduce e (Cons (Tuple x e2') env)
+  Tuple (Ok (Lam x e)) (Ok e2') -> reduce e (Tuple x e2' : env)
   Tuple (Ok (Rec x (Lam y e))) (Ok e2') -> Ok (App (Rec x $ Lam y e) e2')
   Tuple (Ok (Rec x e1')) (Ok (Rec x' e2')) | x == x' -> Ok (Rec x $ App e1' e2')
   Tuple (Ok (Rec x e1')) (Ok (Rec y e2')) -> Ok (Rec x $ Rec y $ App e1' e2')
@@ -93,5 +93,5 @@ reduce (App e1 e2) env = case Tuple (reduce e1 env) (reduce e2 env) of
   Tuple (Err err) _ -> Err err
   Tuple _ (Err err) -> Err err
 reduce (Rec x (Var x')) _ | x == x' = Ok (Rec x $ Var x)
-reduce (Rec x e) env = reduce e (Cons (Tuple x (Rec x $ Var x)) env)
+reduce (Rec x e) env = reduce e (Tuple x (Rec x $ Var x) : env)
 reduce e _ = Ok e
