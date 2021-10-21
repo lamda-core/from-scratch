@@ -1,8 +1,7 @@
 module Untyped where
 
-import Data.Array (elem)
 import Data.Generic.Rep (class Generic)
-import Data.List (List(..), (:))
+import Data.List (List(..), elem, (:))
 import Data.Maybe (Maybe(..))
 import Data.Show.Generic (genericShow)
 import Data.Tuple (Tuple(..))
@@ -20,18 +19,18 @@ data Expr
   | Mul
   | Eq
 
-derive instance eqExpr :: Eq Expr
-derive instance genericExpr :: Generic Expr _
-instance showExpr :: Show Expr where
+derive instance Eq Expr
+derive instance Generic Expr _
+instance Show Expr where
   show x = genericShow x
 
 data Error
   = UndefinedVar String
   | NotAFunction Expr
 
-derive instance eqError :: Eq Error
-derive instance genericError :: Generic Error _
-instance showError :: Show Error where
+derive instance Eq Error
+derive instance Generic Error _
+instance Show Error where
   show x = genericShow x
 
 app2 :: Expr -> Expr -> Expr -> Expr

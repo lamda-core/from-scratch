@@ -12,8 +12,7 @@ to generate this file without the comments in this block.
 -}
 { name = "lamda-from-scratch"
 , dependencies =
-  [ "arrays"
-  , "console"
+  [ "console"
   , "effect"
   , "free"
   , "lists"
