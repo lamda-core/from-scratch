@@ -120,8 +120,6 @@ unify t1 t2 envT = case Tuple (reduceT t1 envT) (reduceT t2 envT) of
   Tuple (Err err) _ -> Err err
   Tuple _ (Err err) -> Err err
 
--- check == reduce + unify
-
 reduce :: Expr -> List (Tuple String Expr) -> List (Tuple String Typ) -> Result Error (Tuple Expr Typ)
 reduce (Num k) _ _ =
   Ok (Tuple (Num k) NumT)
@@ -143,16 +141,18 @@ reduce (Ann (Lam x e) (FunT t1 t2)) env envT = do
   Ok (Tuple (Lam x e') t')
 
 reduce (App (Ann e1 (FunT t1 t2)) e2) env envT = do
-  let e1' = e1
-  Tuple e2' t1' <- reduce e2 env envT
-  Tuple _ envT' <- unify t1 t1' envT
-  t2' <- reduceT t2 envT'
+  Tuple e1' funT <- reduce e1 env envT
+  Tuple e2' argT <- reduce e2 env envT
+  Tuple _ envT1 <- unify (FunT t1 t2) funT envT
+  Tuple t1' envT2 <- unify t1 argT envT1
+  t2' <- reduceT t2 envT2
   case e1' of
-    Lam x e -> reduce (Ann e t2') (Tuple x (Ann e2 t1) : env) envT'
+    Lam x e -> reduce (Ann e t2') (Tuple x (Ann e2 t1') : env) envT2
     _ -> Ok (Tuple (App e1' e2') t2')
 reduce (App (Ann e1 (For x t1)) e2) env envT =
   reduce (App (Ann e1 t1) e2) env (Tuple x (For x (VarT x)) : envT)
-reduce (App (Ann e1 t) _) _ _ = Err (NotAFunction e1 t)
+reduce (App (Ann e1 t) _) _ _ =
+  Err (NotAFunction e1 t)
 reduce (App e1 e2) env envT = do
   Tuple e1' t1 <- reduce e1 env envT
   reduce (App (Ann e1' t1) e2) env envT

@@ -123,12 +123,12 @@ typedTests =
         reduce (App (Var "x") (Num 1.0)) (Tuple "x" (Ann (Var "x") (FunT NumT NumT)) : Nil) Nil # Assert.equal (Ok $ Tuple (App (Var "x") (Num 1.0)) NumT)
       test "✅ x 1  Γ{x: x : ∀x. x -> x}  ∴  x 1 : Num" do
         reduce (App (Var "x") (Num 1.0)) (Tuple "x" (Ann (Var "x") (For "x" $ FunT (VarT "x") (VarT "x"))) : Nil) Nil # Assert.equal (Ok $ Tuple (App (Var "x") (Num 1.0)) NumT)
-      -- test "❌ (1 : Num -> Num) 1  ∴  Type mismatch: Num ≠ Num -> Num" do
-      --   reduce (App (Ann (Num 1.0) (FunT NumT NumT)) (Num 1.0)) Nil Nil # Assert.equal (Err $ TypeMismatch (FunT NumT NumT) NumT)
+      test "❌ (1 : Num -> Num) 1  ∴  Type mismatch: Num ≠ Num -> Num" do
+        reduce (App (Ann (Num 1.0) (FunT NumT NumT)) (Num 1.0)) Nil Nil # Assert.equal (Err $ TypeMismatch (FunT NumT NumT) NumT)
       test "✅ (λx. x) 1  ∴  1 : Num" do
         reduce (App (Lam "x" $ Var "x") (Num 1.0)) Nil Nil # Assert.equal (Ok $ Tuple (Num 1.0) NumT)
-    --   -- test "✅ ((λx. x) (λy. y)) 1  ∴  1" do
-    --   --   reduce (App (App (Lam "x" (Var "x")) (Lam "y" (Var "y"))) (Num 1.0)) Nil Nil # Assert.equal (Ok $ Tuple (Num 1.0) NumT)
+      test "✅ ((λx. x) (λy. y)) 1  ∴  1" do
+        reduce (App (App (Lam "x" (Var "x")) (Lam "y" (Var "y"))) (Num 1.0)) Nil Nil # Assert.equal (Ok $ Tuple (Num 1.0) NumT)
 
     -- suite "☯︎ Addition" do
     --   test "✅ (+)  ∴  (+)" do
