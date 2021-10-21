@@ -19,9 +19,9 @@ typedTests =
     suite "☯︎ Variable type" do
       test "❌ x  ∴  Undefined variable: x" do
         reduceT (VarT "x") Nil # Assert.equal (Err $ UndefinedVar "x")
-      test "✅ x  Γ{x: x}  ∴  x" do
+      test "✅ x  ∏{x: x}  ∴  x" do
         reduceT (VarT "x") (Tuple "x" (VarT "x") : Nil) # Assert.equal (Ok $ VarT "x")
-      test "✅ x  Γ{y: 1, x: y}  ∴  1" do
+      test "✅ x  ∏{y: 1, x: y}  ∴  1" do
         reduceT (VarT "x") (Tuple "y" NumT : Tuple "x" (VarT "y") : Nil) # Assert.equal (Ok NumT)
 
     suite "☯︎ Function type" do
@@ -32,7 +32,7 @@ typedTests =
       test "✅ Num -> Num  ∴  Num -> Num" do
         reduceT (FunT NumT NumT) Nil # Assert.equal (Ok $ FunT NumT NumT)
 
-    suite "☯︎ For all -- generic type" do
+    suite "☯︎ For all" do
       test "✅ ∀x. Num  ∴  Num" do
         reduceT (For "x" NumT) Nil # Assert.equal (Ok NumT)
       test "✅ ∀x. x  ∴  ∀x. x" do
@@ -49,29 +49,29 @@ typedTests =
     suite "☯︎ Unification" do
       test "❌ x == y  ∴  Undefined variable: x" do
         unify (VarT "x") (VarT "y") Nil # Assert.equal (Err $ UndefinedVar "x")
-      test "❌ x == y  Γ{x: x}  ∴  Undefined variable: y" do
+      test "❌ x == y  ∏{x: x}  ∴  Undefined variable: y" do
         unify (VarT "x") (VarT "y") (Tuple "x" (VarT "x") : Nil) # Assert.equal (Err $ UndefinedVar "y")
-      test "❌ x == Num  Γ{x: x}  ∴  Type mismatch: x ≠ Num" do
+      test "❌ x == Num  ∏{x: x}  ∴  Type mismatch: x ≠ Num" do
         unify (VarT "x") NumT (Tuple "x" (VarT "x") : Nil) # Assert.equal (Err $ TypeMismatch (VarT "x") NumT)
       test "✅ Num == Num  ∴  Num" do
         unify NumT NumT Nil # Assert.equal (Ok $ Tuple NumT Nil)
-      test "❌ x -> x == Num -> x  Γ{x: x}  ∴  Type mismatch: x ≠ Num" do
+      test "❌ x -> x == Num -> x  ∏{x: x}  ∴  Type mismatch: x ≠ Num" do
         unify (FunT (VarT "x") (VarT "x")) (FunT NumT (VarT "x")) (Tuple "x" (VarT "x") : Nil) # Assert.equal (Err $ TypeMismatch (VarT "x") NumT)
-      test "❌ Num -> x == Num -> Num  Γ{x: x}  ∴  Type mismatch: x ≠ Num" do
+      test "❌ Num -> x == Num -> Num  ∏{x: x}  ∴  Type mismatch: x ≠ Num" do
         unify (FunT NumT (VarT "x")) (FunT NumT NumT) (Tuple "x" (VarT "x") : Nil) # Assert.equal (Err $ TypeMismatch (VarT "x") NumT)
       test "✅ Num -> Num == Num -> Num  ∴  Num -> Num" do
         unify (FunT NumT NumT) (FunT NumT NumT) Nil # Assert.equal (Ok $ Tuple (FunT NumT NumT) Nil)
-      test "✅ ∀x. x == Num  ∴  Num  Γ{x: Num}" do
+      test "✅ ∀x. x == Num  ∴  Num  ∏{x: Num}" do
         unify (For "x" $ VarT "x") NumT Nil # Assert.equal (Ok $ Tuple NumT $ Tuple "x" NumT : Nil)
-      test "✅ Num == ∀x. x  ∴  Num  Γ{x: Num}" do
+      test "✅ Num == ∀x. x  ∴  Num  ∏{x: Num}" do
         unify NumT (For "x" $ VarT "x") Nil # Assert.equal (Ok $ Tuple NumT $ Tuple "x" NumT : Nil)
-      test "✅ ∀x. x == ∀y. y  ∴  ∀y. y  Γ{x: y, y: ∀y. y}" do
+      test "✅ ∀x. x == ∀y. y  ∴  ∀y. y  ∏{x: y, y: ∀y. y}" do
         unify (For "x" $ VarT "x") (For "y" $ VarT "y") Nil # Assert.equal (Ok $ Tuple (For "y" $ VarT "y") $ Tuple "x" (VarT "y") : Tuple "y" (For "y" $ VarT "y") : Nil)
-      test "✅ ∀x. x -> x == Num -> Num  ∴  Num -> Num  Γ{x: Num}" do
+      test "✅ ∀x. x -> x == Num -> Num  ∴  Num -> Num  ∏{x: Num}" do
         unify (For "x" $ FunT (VarT "x") (VarT "x")) (FunT NumT NumT) Nil # Assert.equal (Ok $ Tuple (FunT NumT NumT) $ Tuple "x" NumT : Nil)
-      test "✅ Num -> Num == ∀x. x -> x  ∴  Num -> Num  Γ{x: Num}" do
+      test "✅ Num -> Num == ∀x. x -> x  ∴  Num -> Num  ∏{x: Num}" do
         unify (FunT NumT NumT) (For "x" $ FunT (VarT "x") (VarT "x")) Nil # Assert.equal (Ok $ Tuple (FunT NumT NumT) $ Tuple "x" NumT : Nil)
-      test "✅ ∀x. x -> x == ∀y. y -> y  ∴  ∀y. y -> y  Γ{x: y, y: ∀y. y}" do
+      test "✅ ∀x. x -> x == ∀y. y -> y  ∴  ∀y. y -> y  ∏{x: y, y: ∀y. y}" do
         unify (For "x" $ FunT (VarT "x") (VarT "x")) (For "y" $ FunT (VarT "y") (VarT "y")) Nil # Assert.equal (Ok $ Tuple ((For "y" $ FunT (VarT "y") (VarT "y"))) $ Tuple "x" (VarT "y") : Tuple "y" (For "y" $ VarT "y") : Nil)
 
     suite "☯︎ Number" do
@@ -130,27 +130,27 @@ typedTests =
       test "✅ ((λx. x) (λy. y)) 1  ∴  1" do
         reduce (App (App (Lam "x" (Var "x")) (Lam "y" (Var "y"))) (Num 1.0)) Nil Nil # Assert.equal (Ok $ Tuple (Num 1.0) NumT)
 
-    -- suite "☯︎ Addition" do
-    --   test "✅ (+)  ∴  (+)" do
-    --     reduce Add Nil # Assert.equal (Ok Add)
-    --   test "✅ (+) 1 2  ∴  3" do
-    --     reduce (App (App Add (Num 1.0)) (Num 2.0)) Nil # Assert.equal (Ok (Num 3.0))
+    suite "☯︎ Addition" do
+      test "✅ (+)  ∴  (+) : ∀a. a -> a -> a" do
+        reduce Add Nil Nil # Assert.equal (Ok $ Tuple Add (For "a" $ FunT (VarT "a") $ FunT (VarT "a") (VarT "a")))
+      test "✅ (+) 1 2  ∴  3" do
+        reduce (App (App Add (Num 1.0)) (Num 2.0)) Nil Nil # Assert.equal (Ok $ Tuple (Num 3.0) NumT)
 
-    -- suite "☯︎ Subtraction" do
-    --   test "✅ (-)  ∴  (-)" do
-    --     reduce Sub Nil # Assert.equal (Ok Sub)
-    --   test "✅ (-) 1 2  ∴  -1" do
-    --     reduce (App (App Sub (Num 1.0)) (Num 2.0)) Nil # Assert.equal (Ok (Num (-1.0)))
+    suite "☯︎ Subtraction" do
+      test "✅ (-)  ∴  (-) : ∀a. a -> a -> a" do
+        reduce Sub Nil Nil # Assert.equal (Ok $ Tuple Sub (For "a" $ FunT (VarT "a") $ FunT (VarT "a") (VarT "a")))
+      test "✅ (-) 2 1  ∴  1" do
+        reduce (App (App Sub (Num 2.0)) (Num 1.0)) Nil Nil # Assert.equal (Ok $ Tuple (Num 1.0) NumT)
 
-    -- suite "☯︎ Multiplication" do
-    --   test "✅ (*)  ∴  (*)" do
-    --     reduce Mul Nil # Assert.equal (Ok Mul)
-    --   test "✅ (*) 1 2  ∴  2" do
-    --     reduce (App (App Mul (Num 1.0)) (Num 2.0)) Nil # Assert.equal (Ok (Num 2.0))
+    suite "☯︎ Multiplication" do
+      test "✅ (*)  ∴  (*) : ∀a. a -> a -> a" do
+        reduce Mul Nil Nil # Assert.equal (Ok $ Tuple Mul (For "a" $ FunT (VarT "a") $ FunT (VarT "a") (VarT "a")))
+      test "✅ (*) 2 3  ∴  6" do
+        reduce (App (App Mul (Num 2.0)) (Num 3.0)) Nil Nil # Assert.equal (Ok $ Tuple (Num 6.0) NumT)
 
     -- suite "☯︎ Equals" do
-    --   test "✅ (==)  ∴  (==)" do
-    --     reduce Eq Nil # Assert.equal (Ok Eq)
+    --   test "✅ (==)  ∴  (==) : ∀a. a -> a -> " do
+    --     reduce Eq Nil Nil # Assert.equal (Ok $ Tuple Eq (For "a" $ FunT (VarT "a") $ FunT (VarT "a") (VarT "Bool")))
     --   test "✅ (==) 1 1  ∴  λTrue False. True" do
     --     reduce (App (App Eq (Num 1.0)) (Num 1.0)) Nil # Assert.equal (Ok (Lam "True" $ Lam "False" $ Var "True"))
     --   test "✅ (==) 1 2  ∴  λTrue False. False" do

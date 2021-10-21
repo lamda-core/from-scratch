@@ -5,7 +5,7 @@ import Data.List (List(..), (:))
 import Data.Maybe (Maybe(..))
 import Data.Show.Generic (genericShow)
 import Data.Tuple (Tuple(..))
-import Prelude (bind, class Eq, class Show, show, ($), (<>), (==))
+import Prelude (class Eq, class Show, bind, show, ($), (*), (+), (-), (<>), (==))
 import Result (Result(..))
 
 data Typ
@@ -85,21 +85,28 @@ set key value (Tuple key' value' : kvs) = Tuple key' value' : set key value kvs
 --   Err err -> Err err
 
 reduceT :: Typ -> List (Tuple String Typ) -> Result Error Typ
-reduceT NumT _ = Ok NumT
+reduceT NumT _ =
+  Ok NumT
+
 reduceT (VarT x) envT = case get x envT of
   Just (VarT x') | x == x' -> Ok (VarT x)
   Just t -> reduceT t (Tuple x (VarT x) : envT)
   Nothing -> Err (UndefinedVar x)
-reduceT (FunT t1 t2) envT = case Tuple (reduceT t1 envT) (reduceT t2 envT) of
-  Tuple (Ok (For x t1')) (Ok (For x' t2')) | x == x' -> Ok (For x $ FunT t1' t2')
-  Tuple (Ok (For x t1')) (Ok (For y t2')) -> Ok (For x $ For y $ FunT t1' t2')
-  Tuple (Ok (For x t1')) (Ok t2') -> Ok (For x $ FunT t1' t2')
-  Tuple (Ok t1') (Ok (For x t2')) -> Ok (For x $ FunT t1' t2')
-  Tuple (Ok t1') (Ok t2') -> Ok (FunT t1' t2')
-  Tuple (Err err) _ -> Err err
-  Tuple _ (Err err) -> Err err
-reduceT (For x (VarT x')) _ | x == x' = Ok (For x $ VarT x)
-reduceT (For x t) envT = reduceT t (Tuple x (For x $ VarT x) : envT)
+
+reduceT (FunT t1 t2) envT = do
+  a <- reduceT t1 envT
+  b <- reduceT t2 envT
+  case Tuple a b of
+    Tuple (For x t1') (For x' t2') | x == x' -> Ok (For x $ FunT t1' t2')
+    Tuple (For x t1') (For y t2') -> Ok (For x $ For y $ FunT t1' t2')
+    Tuple (For x t1') t2' -> Ok (For x $ FunT t1' t2')
+    Tuple t1' (For x t2') -> Ok (For x $ FunT t1' t2')
+    Tuple t1' t2' -> Ok (FunT t1' t2')
+
+reduceT (For x (VarT x')) _ | x == x' =
+  Ok (For x $ VarT x)
+reduceT (For x t) envT =
+  reduceT t (Tuple x (For x $ VarT x) : envT)
 
 -- TODO: simplify this!
 unify :: Typ -> Typ -> List (Tuple String Typ) -> Result Error (Tuple Typ (List (Tuple String Typ)))
@@ -146,9 +153,12 @@ reduce (App (Ann e1 (FunT t1 t2)) e2) env envT = do
   Tuple _ envT1 <- unify (FunT t1 t2) funT envT
   Tuple t1' envT2 <- unify t1 argT envT1
   t2' <- reduceT t2 envT2
-  case e1' of
-    Lam x e -> reduce (Ann e t2') (Tuple x (Ann e2 t1') : env) envT2
-    _ -> Ok (Tuple (App e1' e2') t2')
+  case Tuple e1' e2' of
+    Tuple (Lam x e) _ -> reduce (Ann e t2') (Tuple x (Ann e2 t1') : env) envT2
+    Tuple (App Add (Num k1)) (Num k2) -> Ok (Tuple (Num $ k1 + k2) NumT)
+    Tuple (App Sub (Num k1)) (Num k2) -> Ok (Tuple (Num $ k1 - k2) NumT)
+    Tuple (App Mul (Num k1)) (Num k2) -> Ok (Tuple (Num $ k1 * k2) NumT)
+    Tuple _ _ -> Ok (Tuple (App e1' e2') t2')
 reduce (App (Ann e1 (For x t1)) e2) env envT =
   reduce (App (Ann e1 t1) e2) env (Tuple x (For x (VarT x)) : envT)
 reduce (App (Ann e1 t) _) _ _ =
@@ -157,30 +167,6 @@ reduce (App e1 e2) env envT = do
   Tuple e1' t1 <- reduce e1 env envT
   reduce (App (Ann e1' t1) e2) env envT
 
--- reduce (App (Lam x e) ex) env envT = reduce e (Tuple x ex : env) envT
--- reduce (App (Ann (Lam x e) (FunT t1 t2)) ex) env envT = reduce (Ann e t2) (Tuple x (Ann ex t1) : env) envT
--- reduce (App e1 e2) env envT = case Tuple (reduce e1 env envT) (reduce e2 env envT) of
---   Tuple (Ok (Num k)) _ -> Err (NotAFunction (Num k))
---   Tuple (Ok (Lam x e)) (Ok e2') -> reduce e (Tuple x e2' : env)
---   Tuple (Ok (Rec x (Lam y e))) (Ok e2') -> Ok (App (Rec x $ Lam y e) e2')
---   Tuple (Ok (Rec x e1')) (Ok (Rec x' e2')) | x == x' -> Ok (Rec x $ App e1' e2')
---   Tuple (Ok (Rec x e1')) (Ok (Rec y e2')) -> Ok (Rec x $ Rec y $ App e1' e2')
---   Tuple (Ok (Rec x e1')) (Ok e2') -> Ok (Rec x $ App e1' e2')
---   Tuple (Ok e1') (Ok (Rec x e2')) -> Ok (Rec x $ App e1' e2')
---   Tuple (Ok (App Add (Num k1))) (Ok (Num k2)) -> Ok (Num (k1 + k2))
---   Tuple (Ok (App Sub (Num k1))) (Ok (Num k2)) -> Ok (Num (k1 - k2))
---   Tuple (Ok (App Mul (Num k1))) (Ok (Num k2)) -> Ok (Num (k1 * k2))
---   Tuple (Ok (App Eq (Num k1))) (Ok (Num k2)) | k1 == k2 -> Ok (Lam "True" $ Lam "False" $ Var "True")
---   Tuple (Ok (App Eq (Num _))) (Ok (Num _)) -> Ok (Lam "True" $ Lam "False" $ Var "False")
---   Tuple (Ok (Tuple e1' (For x t1))) (Ok (Tuple e2' _)) -> reduce (App (Ann e1' t1) e2') env (Tuple x (For x t1) : envT)
---   Tuple (Ok (Tuple e1' (FunT t1 t2))) (Ok (Tuple e2' t1')) -> do
---     Tuple _ envT' <- unify t1 t1' envT
---     t2' <- reduceT t2 envT'
---     Ok (Tuple (App e1' e2') t2')
---   Tuple (Ok (Tuple e1' t)) (Ok _) -> Err (NotAFunction e1' t)
---   Tuple (Err err) _ -> Err err
---   Tuple _ (Err err) -> Err err
-
 reduce (Ann e (For x t)) env envT =
   reduce (Ann e t) env (Tuple x (For x $ VarT x) : envT)
 reduce (Ann e t) env envT = do
@@ -188,22 +174,11 @@ reduce (Ann e t) env envT = do
   Tuple t' _ <- unify et t envT
   Ok (Tuple e' t')
 
--- reduce (Ann e (For x t)) env envT = reduce (Ann e t) env (Tuple x (For x $ VarT x) : envT)
--- reduce (Ann (Lam x e) (FunT t1 t2)) env envT = do
---   Tuple e' et <- reduce e (Tuple x (Ann (Var x) t1) : env) envT
---   Tuple t2' envT' <- unify t2 et envT
---   t' <- reduceT (FunT t1 t2') envT'
---   Ok (Tuple (Lam x e') t')
--- reduce (Ann e t) env envT = do
---   Tuple e' et <- reduce e env envT
---   Tuple t' _ <- unify et t envT
---   Ok (Tuple e' t')
--- reduce (Rec x (Var x')) _ | x == x' = Ok (Rec x $ Var x)
--- reduce (Rec x e) env = reduce e (Tuple x (Rec x $ Var x) : env)
--- reduce e _ = Ok e
-reduce e _ _ = Err (UndefinedVar $ "Not implemented: " <> show e)
+reduce Add _ _ =
+  Ok (Tuple Add (For "a" $ FunT (VarT "a") $ FunT (VarT "a") (VarT "a")))
+reduce Sub _ _ =
+  Ok (Tuple Sub (For "a" $ FunT (VarT "a") $ FunT (VarT "a") (VarT "a")))
+reduce Mul _ _ =
+  Ok (Tuple Mul (For "a" $ FunT (VarT "a") $ FunT (VarT "a") (VarT "a")))
 
---  -- Subtype
---  check env other t2 =
---    let t1 = synth env other
---    in isSubtype t1 t2
+reduce e _ _ = Err (UndefinedVar $ "Not implemented: " <> show e)
