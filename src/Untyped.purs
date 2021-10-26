@@ -118,4 +118,7 @@ eval (App expr1 expr2) env = do
     Tuple (App Eq (Int k1)) (Int k2) | k1 == k2 -> Ok (Int 1)
     Tuple (App Eq (Int _)) (Int _) -> Ok (Int 0)
     _ -> Ok (e1 `App` e2)
-eval e _ = Ok e
+eval Add _ = Ok Add
+eval Sub _ = Ok Sub
+eval Mul _ = Ok Mul
+eval Eq _ = Ok Eq
