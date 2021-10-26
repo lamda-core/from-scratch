@@ -25,9 +25,7 @@ instance Show Expr where
 
 data Error
   = UndefinedVar String
-  | PatternMismatch Expr Expr -- TODO: rename to `DoesNotMatch`
-  -- TODO: REMOVE THIS
-  | TODO String Expr
+  | DoesNotMatch Expr Expr
 
 derive instance Eq Error
 derive instance Generic Error _
@@ -60,7 +58,7 @@ match pattern expr env = do
       Ok ((e1' `To` e2') `Tuple` env2)
     Tuple (Or p1 p2) _ -> case match p1 e env of
       Ok result -> Ok result
-      Err (PatternMismatch _ _) -> match p2 e env
+      Err (DoesNotMatch _ _) -> match p2 e env
       Err err -> Err err
     Tuple (And p1 p2) (And e1 e2) -> do
       Tuple e1' env1 <- match p1 e1 env
@@ -70,7 +68,7 @@ match pattern expr env = do
       Tuple e1' env1 <- match p1 e1 env
       Tuple e2' env2 <- match p2 e2 env1
       Ok ((e1' `App` e2') `Tuple` env2)
-    _ -> Err (PatternMismatch p e)
+    _ -> Err (p `DoesNotMatch` e)
 
 eval :: Expr -> List (Tuple String Expr) -> Result Error Expr
 eval Any _ = Ok Any
@@ -103,7 +101,7 @@ eval (App expr1 expr2) env = do
       eval e env'
     Tuple (Or p1 p2) _ -> case eval (p1 `App` e2) env of
       Ok e -> Ok e
-      Err (PatternMismatch _ _) -> eval (p2 `App` e2) env
+      Err (DoesNotMatch _ _) -> eval (p2 `App` e2) env
       Err err -> Err err
     Tuple (And p1 p2) _ -> do
       e1' <- eval (p1 `App` e2) env

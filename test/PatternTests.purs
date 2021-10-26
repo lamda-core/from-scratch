@@ -17,8 +17,8 @@ patternTests =
         match (Var "x") (Var "y") Nil # Assert.equal (Err $ UndefinedVar "x")
       test "❌ _ <- y  ∴  Undefined variable: y" do
         match Any (Var "y") Nil # Assert.equal (Err $ UndefinedVar "y")
-      test "❌ A <- B  ∴  Pattern mismatch: A ≠ B" do
-        match (Ctr "A") (Ctr "B") Nil # Assert.equal (Err $ PatternMismatch (Ctr "A") (Ctr "B"))
+      test "❌ A <- B  ∴  A does not match B" do
+        match (Ctr "A") (Ctr "B") Nil # Assert.equal (Err $ Ctr "A" `DoesNotMatch` Ctr "B")
 
       test "✅ _ <- A  ∴  A" do
         match Any (Ctr "A") Nil # Assert.equal (Ok $ Ctr "A" `Tuple` Nil)
@@ -32,9 +32,9 @@ patternTests =
         match (Var "x") (Ctr "A") ("x" `Tuple` Var "x" : Nil) # Assert.equal (Ok $ Ctr "A" `Tuple` ("x" `Tuple` Ctr "A" : Nil))
 
       test "❌ (A -> B) <- (C -> D)  ∴  Pattern mismatch: A ≠ C" do
-        match (Ctr "A" `To` Ctr "B") (Ctr "C" `To` Ctr "D") Nil # Assert.equal (Err $ PatternMismatch (Ctr "A") (Ctr "C"))
+        match (Ctr "A" `To` Ctr "B") (Ctr "C" `To` Ctr "D") Nil # Assert.equal (Err $ Ctr "A" `DoesNotMatch` Ctr "C")
       test "❌ (A -> B) <- (A -> C)  ∴  Pattern mismatch: B ≠ C" do
-        match (Ctr "A" `To` Ctr "B") (Ctr "A" `To` Ctr "C") Nil # Assert.equal (Err $ PatternMismatch (Ctr "B") (Ctr "C"))
+        match (Ctr "A" `To` Ctr "B") (Ctr "A" `To` Ctr "C") Nil # Assert.equal (Err $ Ctr "B" `DoesNotMatch` Ctr "C")
       test "✅ (A -> B) <- (A -> B)  ∴  (A, B)" do
         match (Ctr "A" `To` Ctr "B") (Ctr "A" `To` Ctr "B") Nil # Assert.equal (Ok $ (Ctr "A" `To` Ctr "B") `Tuple` Nil)
 
@@ -45,19 +45,19 @@ patternTests =
       test "✅ A | B <- B  ∴  B" do
         match (Ctr "A" `Or` Ctr "B") (Ctr "B") Nil # Assert.equal (Ok $ Ctr "B" `Tuple` Nil)
       test "❌ A | B <- C  ∴  Pattern mismatch: B ≠ C" do
-        match (Ctr "A" `Or` Ctr "B") (Ctr "C") Nil # Assert.equal (Err $ PatternMismatch (Ctr "B") (Ctr "C"))
+        match (Ctr "A" `Or` Ctr "B") (Ctr "C") Nil # Assert.equal (Err $ Ctr "B" `DoesNotMatch` Ctr "C")
 
       test "❌ (A, B) <- (C, D)  ∴  Pattern mismatch: A ≠ C" do
-        match (Ctr "A" `And` Ctr "B") (Ctr "C" `And` Ctr "D") Nil # Assert.equal (Err $ PatternMismatch (Ctr "A") (Ctr "C"))
+        match (Ctr "A" `And` Ctr "B") (Ctr "C" `And` Ctr "D") Nil # Assert.equal (Err $ Ctr "A" `DoesNotMatch` Ctr "C")
       test "❌ (A, B) <- (A, C)  ∴  Pattern mismatch: B ≠ C" do
-        match (Ctr "A" `And` Ctr "B") (Ctr "A" `And` Ctr "C") Nil # Assert.equal (Err $ PatternMismatch (Ctr "B") (Ctr "C"))
+        match (Ctr "A" `And` Ctr "B") (Ctr "A" `And` Ctr "C") Nil # Assert.equal (Err $ Ctr "B" `DoesNotMatch` Ctr "C")
       test "✅ (A, B) <- (A, B)  ∴  (A, B)" do
         match (Ctr "A" `And` Ctr "B") (Ctr "A" `And` Ctr "B") Nil # Assert.equal (Ok $ (Ctr "A" `And` Ctr "B") `Tuple` Nil)
 
       test "❌ A B <- C D  ∴  Pattern mismatch: A ≠ C" do
-        match (Ctr "A" `App` Ctr "B") (Ctr "C" `App` Ctr "D") Nil # Assert.equal (Err $ PatternMismatch (Ctr "A") (Ctr "C"))
+        match (Ctr "A" `App` Ctr "B") (Ctr "C" `App` Ctr "D") Nil # Assert.equal (Err $ Ctr "A" `DoesNotMatch` Ctr "C")
       test "❌ A B <- A C  ∴  Pattern mismatch: B ≠ C" do
-        match (Ctr "A" `App` Ctr "B") (Ctr "A" `App` Ctr "C") Nil # Assert.equal (Err $ PatternMismatch (Ctr "B") (Ctr "C"))
+        match (Ctr "A" `App` Ctr "B") (Ctr "A" `App` Ctr "C") Nil # Assert.equal (Err $ Ctr "B" `DoesNotMatch` Ctr "C")
       test "✅ A B <- A B  ∴  A B" do
         match (Ctr "A" `App` Ctr "B") (Ctr "A" `App` Ctr "B") Nil # Assert.equal (Ok $ (Ctr "A" `App` Ctr "B") `Tuple` Nil)
 
@@ -123,7 +123,7 @@ patternTests =
       test "✅ (A -> B) x  Γ{x: x}  ∴  (A -> A) x" do
         eval (Ctr "A" `To` Ctr "B" `App` Var "x") ("x" `Tuple` Var "x" : Nil) # Assert.equal (Ok $ (Ctr "A" `To` Ctr "B") `App` Var "x")
       test "❌ (A -> B) C  ∴  Pattern mismatch: A ≠ C" do
-        eval (Ctr "A" `To` Ctr "B" `App` Ctr "C") Nil # Assert.equal (Err $ PatternMismatch (Ctr "A") (Ctr "C"))
+        eval (Ctr "A" `To` Ctr "B" `App` Ctr "C") Nil # Assert.equal (Err $ Ctr "A" `DoesNotMatch` Ctr "C")
       test "✅ (A -> B) A  ∴  B" do
         eval (Ctr "A" `To` Ctr "B" `App` Ctr "A") Nil # Assert.equal (Ok $ Ctr "B")
 
@@ -132,7 +132,7 @@ patternTests =
       test "✅ (A -> C | B -> D) B  ∴  C" do
         eval ((Ctr "A" `To` Ctr "C") `Or` (Ctr "B" `To` Ctr "D") `App` Ctr "B") Nil # Assert.equal (Ok $ Ctr "D")
       test "❌ (A -> C | B -> D) C  ∴  Pattern mismatch: B ≠ C" do
-        eval ((Ctr "A" `To` Ctr "C") `Or` (Ctr "B" `To` Ctr "D") `App` Ctr "C") Nil # Assert.equal (Err $ PatternMismatch (Ctr "B") (Ctr "C"))
+        eval ((Ctr "A" `To` Ctr "C") `Or` (Ctr "B" `To` Ctr "D") `App` Ctr "C") Nil # Assert.equal (Err $ Ctr "B" `DoesNotMatch` Ctr "C")
 
       test "✅ (A, B) C  ∴  (A C, B C)" do
         eval ((Ctr "A" `And` Ctr "B") `App` Ctr "C") Nil # Assert.equal (Ok $ Ctr "A" `App` Ctr "C" `And` (Ctr "B" `App` Ctr "C"))
