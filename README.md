@@ -2,12 +2,14 @@
 
 ## Before you begin
 
-Make sure you have [Haskell](https://www.haskell.org/ghcup/) with `stack` installed.
+Make sure you have [PureScript](https://www.purescript.org) with `spago` installed:
+
+```sh
+npm install -g purescript spago
+```
 
 ## Running tests
 
 ```sh
-stack test
+spago test
 ```
-
-> ℹ️ It might take several minutes to run the first time since it will download, compile, and install everything.

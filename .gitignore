@@ -1,7 +1,9 @@
 # VS Code
-.vscode/
+/.vscode/
 
-# Haskell stuff
-.stack-work/
-stack.yaml.lock
-*~
+# PureScript
+/.psa*
+/.psc*
+/.purs*
+/.spago/
+/output/
