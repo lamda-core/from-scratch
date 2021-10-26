@@ -23,14 +23,12 @@ patternTests =
         match (Int 1) (Int 2) Nil # Assert.equal (Err $ Int 1 `PatternMismatch` Int 2)
       test "✅ _ <- A  ∴  Γ{}" do
         match Any (Ctr "A") Nil # Assert.equal (Ok Nil)
-      test "✅ x <- y  Γ{x: x, y: y}  ∴  Γ{x: y, y: y}" do
-        match (Var "x") (Var "y") ("x" `Tuple` Var "x" : "y" `Tuple` Var "y" : Nil) # Assert.equal (Ok $ "x" `Tuple` Var "y" : "y" `Tuple` Var "y" : Nil)
+      test "✅ x <- A  Γ{x: x}  ∴  Γ{x: A}" do
+        match (Var "x") (Ctr "A") ("x" `Tuple` Var "x" : Nil) # Assert.equal (Ok $ "x" `Tuple` Ctr "A" : Nil)
       test "✅ A <- y  Γ{y: y}  ∴  Γ{y: y}" do
         match (Ctr "A") (Var "y") ("y" `Tuple` Var "y" : Nil) # Assert.equal (Ok $ "y" `Tuple` Var "y" : Nil)
       test "✅ A <- A  ∴  Γ{}" do
         match (Ctr "A") (Ctr "A") Nil # Assert.equal (Ok Nil)
-      test "✅ x <- A  Γ{x: x}  ∴  Γ{x: A}" do
-        match (Var "x") (Ctr "A") ("x" `Tuple` Var "x" : Nil) # Assert.equal (Ok $ "x" `Tuple` Ctr "A" : Nil)
       test "❌ (A -> B) <- (C -> D)  ∴  Pattern mismatch: A ≠ C" do
         match (Ctr "A" `To` Ctr "B") (Ctr "C" `To` Ctr "D") Nil # Assert.equal (Err $ Ctr "A" `PatternMismatch` Ctr "C")
       test "❌ (A -> B) <- (A -> C)  ∴  Pattern mismatch: B ≠ C" do
@@ -134,41 +132,31 @@ patternTests =
       test "✅ (A, B) C  ∴  (A C, B C)" do
         eval ((Ctr "A" `And` Ctr "B") `App` Ctr "C") Nil # Assert.equal (Ok $ Ctr "A" `App` Ctr "C" `And` (Ctr "B" `App` Ctr "C"))
 
-    -- suite "☯︎ Addition" do
-    --   test "✅ (+)  ∴  (+) : ∀a. a -> a -> a" do
-    --     eval Add Nil # Assert.equal (Ok $ Tuple Add (For "a" $ FunT (VarT "a") $ FunT (VarT "a") (VarT "a")))
-    --   test "✅ (+) 1 2  ∴  3" do
-    --     reduce (App (App Add (Int 1)) (Int 2)) Nil Nil # Assert.equal (Ok $ Tuple (Int 3) IntT)
-    --   test "✅ (+) 1 2  ∴  3" do
-    --     reduce (App (App Add (Num 1.0)) (Num 2.0)) Nil Nil # Assert.equal (Ok $ Tuple (Num 3.0) NumT)
+    suite "☯︎ Addition" do
+      test "✅ (+)  ∴  (+)" do
+        eval Add Nil # Assert.equal (Ok Add)
+      test "✅ (+) 1 2  ∴  3" do
+        eval (App (App Add (Int 1)) (Int 2)) Nil # Assert.equal (Ok $ Int 3)
 
-    -- suite "☯︎ Subtraction" do
-    --   test "✅ (-)  ∴  (-) : ∀a. a -> a -> a" do
-    --     reduce Sub Nil Nil # Assert.equal (Ok $ Tuple Sub (For "a" $ FunT (VarT "a") $ FunT (VarT "a") (VarT "a")))
-    --   test "✅ (-) 2 1  ∴  1" do
-    --     reduce (App (App Sub (Int 2)) (Int 1)) Nil Nil # Assert.equal (Ok $ Tuple (Int 1) IntT)
-    --   test "✅ (-) 2.0 1.0  ∴  1.0" do
-    --     reduce (App (App Sub (Num 2.0)) (Num 1.0)) Nil Nil # Assert.equal (Ok $ Tuple (Num 1.0) NumT)
+    suite "☯︎ Subtraction" do
+      test "✅ (-)  ∴  (-)" do
+        eval Sub Nil # Assert.equal (Ok Sub)
+      test "✅ (-) 2 1  ∴  1" do
+        eval (App (App Sub (Int 2)) (Int 1)) Nil # Assert.equal (Ok $ Int 1)
 
-    -- suite "☯︎ Multiplication" do
-    --   test "✅ (*)  ∴  (*) : ∀a. a -> a -> a" do
-    --     reduce Mul Nil Nil # Assert.equal (Ok $ Tuple Mul (For "a" $ FunT (VarT "a") $ FunT (VarT "a") (VarT "a")))
-    --   test "✅ (*) 2 3  ∴  6" do
-    --     reduce (App (App Mul (Int 2)) (Int 3)) Nil Nil # Assert.equal (Ok $ Tuple (Int 6) IntT)
-    --   test "✅ (*) 2.0 3.0  ∴  6.0" do
-    --     reduce (App (App Mul (Num 2.0)) (Num 3.0)) Nil Nil # Assert.equal (Ok $ Tuple (Num 6.0) NumT)
+    suite "☯︎ Multiplication" do
+      test "✅ (*)  ∴  (*)" do
+        eval Mul Nil # Assert.equal (Ok Mul)
+      test "✅ (*) 2 3  ∴  6" do
+        eval (App (App Mul (Int 2)) (Int 3)) Nil # Assert.equal (Ok $ Int 6)
 
-    -- suite "☯︎ Equals" do
-    --   test "✅ (==)  ∴  (==) : ∀a. a -> a -> Int" do
-    --     reduce Eq Nil Nil # Assert.equal (Ok $ Tuple Eq (For "a" $ FunT (VarT "a") $ FunT (VarT "a") IntT))
-    --   test "✅ (==) 2 2  ∴  1 : Int" do
-    --     reduce (App (App Eq (Int 2)) (Int 2)) Nil Nil # Assert.equal (Ok $ Tuple (Int 1) IntT)
-    --   test "✅ (==) 2 3  ∴  0 : Int" do
-    --     reduce (App (App Eq (Int 2)) (Int 3)) Nil Nil # Assert.equal (Ok $ Tuple (Int 0) IntT)
-    --   test "✅ (==) 2.0 2.0  ∴  1 : Int" do
-    --     reduce (App (App Eq (Num 2.0)) (Num 2.0)) Nil Nil # Assert.equal (Ok $ Tuple (Int 1) IntT)
-    --   test "✅ (==) 2.0 3.0  ∴  0 : Int" do
-    --     reduce (App (App Eq (Num 2.0)) (Num 3.0)) Nil Nil # Assert.equal (Ok $ Tuple (Int 0) IntT)
+    suite "☯︎ Equals" do
+      test "✅ (==)  ∴  (==)" do
+        eval Eq Nil # Assert.equal (Ok Eq)
+      test "✅ (==) 2 2  ∴  1" do
+        eval (App (App Eq (Int 2)) (Int 2)) Nil # Assert.equal (Ok $ Int 1)
+      test "✅ (==) 2 3  ∴  0" do
+        eval (App (App Eq (Int 2)) (Int 3)) Nil # Assert.equal (Ok $ Int 0)
 
     -- suite "☯︎ Recursive definition" do
     --   test "✅ x@1  ∴  1" do

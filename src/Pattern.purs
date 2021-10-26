@@ -18,6 +18,10 @@ data Expr
   | Or  Expr Expr   -- e1 | e2
   | And Expr Expr   -- (e1, e2)
   | App Expr Expr   -- e1 e2
+  | Add             -- (+)
+  | Sub             -- (-)
+  | Mul             -- (*)
+  | Eq              -- (==)
 
 derive instance Eq Expr
 derive instance Generic Expr _
@@ -49,11 +53,8 @@ match pattern expr env = do
   e <- eval expr env
   case Tuple p e of
     Tuple Any _ -> Ok env
-    Tuple (Var x) (Var y) -> Ok (set x (Var y) env)
-    Tuple _ (Var y) -> Ok env
-    Tuple (Int k) _ | e == Int k -> Ok env
-    Tuple (Ctr x) _ | e == Ctr x -> Ok env
     Tuple (Var x) _ -> Ok (set x e env)
+    Tuple _ (Var _) -> Ok env
     Tuple (To p1 p2) (To e1 e2) -> do
       env1 <- match p1 e1 env
       env2 <- match p2 e2 env1
@@ -70,6 +71,7 @@ match pattern expr env = do
       env1 <- match p1 e1 env
       env2 <- match p2 e2 env1
       Ok env2
+    Tuple p' _ | p' == e -> Ok env
     _ -> Err (PatternMismatch p e)
 
 eval :: Expr -> List (Tuple String Expr) -> Result Error Expr
@@ -110,4 +112,10 @@ eval (App expr1 expr2) env = do
       e1' <- eval (p1 `App` e2) env
       e2' <- eval (p2 `App` e2) env
       Ok (e1' `And` e2')
+    Tuple (App Add (Int k1)) (Int k2) -> Ok (Int (k1 + k2))
+    Tuple (App Sub (Int k1)) (Int k2) -> Ok (Int (k1 - k2))
+    Tuple (App Mul (Int k1)) (Int k2) -> Ok (Int (k1 * k2))
+    Tuple (App Eq (Int k1)) (Int k2) | k1 == k2 -> Ok (Int 1)
+    Tuple (App Eq (Int _)) (Int _) -> Ok (Int 0)
     _ -> Ok (e1 `App` e2)
+eval e _ = Ok e
