@@ -1,75 +1,62 @@
 module Test.UntypedTests where
 
-import Prelude
-
 import Control.Monad.Free (Free)
 import Data.List (List(..), (:))
 import Data.Tuple (Tuple(..))
+import Prelude (Unit, discard, (#), ($))
 import Result (Result(..))
 import Test.Unit (TestF, suite, test)
 import Test.Unit.Assert as Assert
-import Untyped (Error(..), Expr(..), eval, match)
+import Untyped (Error(..), Expr(..), eval, match, mul, sub)
 
 untypedTests :: Free TestF Unit
 untypedTests = 
   suite "--== Untyped ==--" do
-    suite "☯︎ Match" do
-      test "❌ x <- y  ∴  Undefined variable: x" do
-        match (Var "x") (Var "y") Nil # Assert.equal (Err $ UndefinedVar "x")
+    suite "☯︎ match" do
       test "❌ _ <- y  ∴  Undefined variable: y" do
         match Any (Var "y") Nil # Assert.equal (Err $ UndefinedVar "y")
-      test "❌ A <- B  ∴  A does not match B" do
-        match (Ctr "A") (Ctr "B") Nil # Assert.equal (Err $ PatternMismatch (Ctr "A") (Ctr "B"))
-      test "❌ 1 <- 2  ∴  1 does not match 2" do
+      test "✅ _ <- B  ∴  Γ{}" do
+        match Any (Ctr "B") Nil # Assert.equal (Ok Nil)
+      test "✅ 1 <- x  ∴  Γ{x: x}" do
+        match (Int 1) (Var "x") ("x" `Tuple` Var "x" : Nil) # Assert.equal (Ok $ "x" `Tuple` Var "x" : Nil)
+      test "✅ 1 <- 1  ∴  Γ{}" do
+        match (Int 1) (Int 1) Nil # Assert.equal (Ok Nil)
+      test "❌ 1 <- 2  ∴  Pattern mismatch: 1 ≠ 2" do
         match (Int 1) (Int 2) Nil # Assert.equal (Err $ PatternMismatch (Int 1) (Int 2))
-      test "✅ _ <- A  ∴  Γ{}" do
-        match Any (Ctr "A") Nil # Assert.equal (Ok Nil)
-      test "✅ x <- A  Γ{x: x}  ∴  Γ{x: A}" do
-        match (Var "x") (Ctr "A") ("x" `Tuple` Var "x" : Nil) # Assert.equal (Ok $ "x" `Tuple` Ctr "A" : Nil)
-      test "✅ A <- y  Γ{y: y}  ∴  Γ{y: y}" do
-        match (Ctr "A") (Var "y") ("y" `Tuple` Var "y" : Nil) # Assert.equal (Ok $ "y" `Tuple` Var "y" : Nil)
       test "✅ A <- A  ∴  Γ{}" do
         match (Ctr "A") (Ctr "A") Nil # Assert.equal (Ok Nil)
-      test "❌ (A -> B) <- (C -> D)  ∴  Pattern mismatch: A ≠ C" do
-        match (Ctr "A" `To` Ctr "B") (Ctr "C" `To` Ctr "D") Nil # Assert.equal (Err $ PatternMismatch (Ctr "A") (Ctr "C"))
-      test "❌ (A -> B) <- (A -> C)  ∴  Pattern mismatch: B ≠ C" do
-        match (Ctr "A" `To` Ctr "B") (Ctr "A" `To` Ctr "C") Nil # Assert.equal (Err $ PatternMismatch (Ctr "B") (Ctr "C"))
-      test "✅ (A -> B) <- (A -> B)  ∴  Γ{}" do
-        match (Ctr "A" `To` Ctr "B") (Ctr "A" `To` Ctr "B") Nil # Assert.equal (Ok Nil)
-      test "❌ x | B <- A  ∴  Undefined variable: x" do
-        match (Var "x" `Or` Ctr "B") (Ctr "A") Nil # Assert.equal (Err $ UndefinedVar "x")
-      test "✅ A | B <- A  ∴  Γ{}" do
-        match (Ctr "A" `Or` Ctr "B") (Ctr "A") Nil # Assert.equal (Ok Nil)
-      test "✅ A | B <- B  ∴  Γ{}" do
-        match (Ctr "A" `Or` Ctr "B") (Ctr "B") Nil # Assert.equal (Ok Nil)
-      test "❌ A | B <- C  ∴  Pattern mismatch: B ≠ C" do
-        match (Ctr "A" `Or` Ctr "B") (Ctr "C") Nil # Assert.equal (Err $ PatternMismatch (Ctr "B") (Ctr "C"))
-      test "❌ (A, B) <- (C, D)  ∴  Pattern mismatch: A ≠ C" do
-        match (Ctr "A" `And` Ctr "B") (Ctr "C" `And` Ctr "D") Nil # Assert.equal (Err $ PatternMismatch (Ctr "A") (Ctr "C"))
-      test "❌ (A, B) <- (A, C)  ∴  Pattern mismatch: B ≠ C" do
-        match (Ctr "A" `And` Ctr "B") (Ctr "A" `And` Ctr "C") Nil # Assert.equal (Err $ PatternMismatch (Ctr "B") (Ctr "C"))
-      test "✅ (A, B) <- (A, B)  ∴  Γ{}" do
-        match (Ctr "A" `And` Ctr "B") (Ctr "A" `And` Ctr "B") Nil # Assert.equal (Ok Nil)
-      test "❌ A B <- C D  ∴  Pattern mismatch: A ≠ C" do
-        match (Ctr "A" `App` Ctr "B") (Ctr "C" `App` Ctr "D") Nil # Assert.equal (Err $ PatternMismatch (Ctr "A") (Ctr "C"))
-      test "❌ A B <- A C  ∴  Pattern mismatch: B ≠ C" do
-        match (Ctr "A" `App` Ctr "B") (Ctr "A" `App` Ctr "C") Nil # Assert.equal (Err $ PatternMismatch (Ctr "B") (Ctr "C"))
-      test "✅ A B <- A B  ∴  Γ{}" do
-        match (Ctr "A" `App` Ctr "B") (Ctr "A" `App` Ctr "B") Nil # Assert.equal (Ok Nil)
+      test "❌ A <- B  ∴  Pattern mismatch: A ≠ B" do
+        match (Ctr "A") (Ctr "B") Nil # Assert.equal (Err $ PatternMismatch (Ctr "A") (Ctr "B"))
+      test "✅ x <- B  ∴  Γ{x: B}" do
+        match (Var "x") (Ctr "B") Nil # Assert.equal (Ok $ "x" `Tuple` Ctr "B" : Nil)
+      test "✅ x <- B  Γ{x: x}  ∴  {x: B}" do
+        match (Var "x") (Ctr "B") ("x" `Tuple` Var "x" : Nil) # Assert.equal (Ok $ "x" `Tuple` Ctr "B" : Nil)
+      test "❌ x <- B  Γ{x: A}  ∴  Pattern mismatch: A ≠ B" do
+        match (Var "x") (Ctr "B") ("x" `Tuple` Ctr "A" : Nil) # Assert.equal (Err $ PatternMismatch (Ctr "A") (Ctr "B"))
+      test "✅ (x -> y) <- (A -> B)  ∴  Γ{y: B, x: A}" do
+        match (Var "x" `To` Var "y") (Ctr "A" `To` Ctr "B") Nil # Assert.equal (Ok $ "y" `Tuple` Ctr "B" : "x" `Tuple` Ctr "A" : Nil)
+      test "✅ x | y <- A  ∴  Γ{x: A}" do
+        match (Var "x" `Or` Var "y") (Ctr "A") Nil # Assert.equal (Ok $ "x" `Tuple` Ctr "A" : Nil)
+      test "✅ A | y <- B  ∴  Γ{y: B}" do
+        match (Ctr "A" `Or` Var "y") (Ctr "B") Nil # Assert.equal (Ok $ "y" `Tuple` Ctr "B" : Nil)
+      test "✅ (x, y) <- (A, B)  ∴  Γ{y: B, x: A}" do
+        match (Var "x" `And` Var "y") (Ctr "A" `And` Ctr "B") Nil # Assert.equal (Ok $ "y" `Tuple` Ctr "B" : "x" `Tuple` Ctr "A" : Nil)
+      test "✅ x y <- A B  ∴  Γ{y: B, x: A}" do
+        match (Var "x" `App` Var "y") (Ctr "A" `App` Ctr "B") Nil # Assert.equal (Ok $ "y" `Tuple` Ctr "B" : "x" `Tuple` Ctr "A" : Nil)
 
-    suite "☯︎ Anything" do
-      test "✅ _  ∴  _" do
-        eval Any Nil # Assert.equal (Ok Any)
+    suite "☯︎ eval Anything" do
+      test "❌ _  ∴  Not a value: _" do
+        eval Any Nil # Assert.equal (Err $ NotAValue Any)
 
-    suite "☯︎ Integer" do
+    suite "☯︎ eval Integer" do
       test "✅ 42  ∴  42" do
         eval (Int 42) Nil # Assert.equal (Ok $ Int 42)
 
-    suite "☯︎ Constructor" do
+    suite "☯︎ eval Constructor" do
       test "✅ A  ∴  A" do
         eval (Ctr "A") Nil # Assert.equal (Ok $ Ctr "A")
 
-    suite "☯︎ Variable" do
+    suite "☯︎ eval Variable" do
       test "❌ x  ∴  Undefined variable: x" do
         eval (Var "x") Nil # Assert.equal (Err $ UndefinedVar "x")
       test "✅ x  Γ{x: x}  ∴  x" do
@@ -77,15 +64,27 @@ untypedTests =
       test "✅ x  Γ{y: A, x: y}  ∴  A" do
         eval (Var "x") ("y" `Tuple` Ctr "A" : "x" `Tuple` Var "y" : Nil) # Assert.equal (Ok $ Ctr "A")
 
-    suite "☯︎ To -- Pattern case" do
-      test "❌ x -> y  ∴  Undefined variable: x" do
-        eval (Var "x" `To` Var "y") Nil # Assert.equal (Err $ UndefinedVar "x")
-      test "❌ A -> y  ∴  Undefined variable: y" do
-        eval (Ctr "A" `To` Var "y") Nil # Assert.equal (Err $ UndefinedVar "y")
+    suite "☯︎ eval To" do
+      test "❌ A -> _  ∴  Not a value: _" do
+        eval (Ctr "A" `To` Any) Nil # Assert.equal (Err $ NotAValue Any)
+      test "✅ _ -> B  ∴  _ -> B" do
+        eval (Any `To` Ctr "B") Nil # Assert.equal (Ok $ Any `To` Ctr "B")
+      test "✅ 1 -> B  ∴  1 -> B" do
+        eval (Int 1 `To` Ctr "B") Nil # Assert.equal (Ok $ Int 1 `To` Ctr "B")
       test "✅ A -> B  ∴  A -> B" do
         eval (Ctr "A" `To` Ctr "B") Nil # Assert.equal (Ok $ Ctr "A" `To` Ctr "B")
+      test "✅ x -> x  ∴  x -> x" do
+        eval (Var "x" `To` Var "x") Nil # Assert.equal (Ok $ Var "x" `To` Var "x")
+      test "✅ (x -> y) -> y  ∴  (x -> y) -> y" do
+        eval ((Var "x" `To` Var "y") `To` Var "y") Nil # Assert.equal (Ok $ (Var "x" `To` Var "y") `To` Var "y")
+      test "✅ (x | y) -> A  ∴  x -> A | y -> A" do
+        eval ((Var "x" `Or` Var "y") `To` Ctr "A") Nil # Assert.equal (Ok $ Var "x" `To` Ctr "A" `Or` (Var "y" `To` Ctr "A"))
+      test "✅ (x, y) -> (x, y)  ∴  (x, y) -> (x, y)" do
+        eval ((Var "x" `And` Var "y") `To` (Var "x" `And` Var "y")) Nil # Assert.equal (Ok $ Var "x" `And` Var "y" `To` (Var "x" `And` Var "y"))
+      test "✅ x y -> x y  ∴  x y -> x y" do
+        eval ((Var "x" `App` Var "y") `To` (Var "x" `App` Var "y")) Nil # Assert.equal (Ok $ Var "x" `App` Var "y" `To` (Var "x" `App` Var "y"))
 
-    suite "☯︎ Or -- Union / Sum type / Disjunction" do
+    suite "☯︎ eval Or" do
       test "❌ x | y  ∴  Undefined variable: x" do
         eval (Var "x" `Or` Var "y") Nil # Assert.equal (Err $ UndefinedVar "x")
       test "❌ A | y  ∴  Undefined variable: y" do
@@ -93,7 +92,7 @@ untypedTests =
       test "✅ A | B  ∴  A | B" do
         eval (Ctr "A" `Or` Ctr "B") Nil # Assert.equal (Ok $ Ctr "A" `Or` Ctr "B")
 
-    suite "☯︎ And -- Tuple / Product type / Conjunction" do
+    suite "☯︎ eval And" do
       test "❌ (x, y)  ∴  Undefined variable: x" do
         eval (Var "x" `And` Var "y") Nil # Assert.equal (Err $ UndefinedVar "x")
       test "❌ (A, y)  ∴  Undefined variable: y" do
@@ -101,19 +100,17 @@ untypedTests =
       test "✅ (A, B)  ∴  (A, B)" do
         eval (Ctr "A" `And` Ctr "B") Nil # Assert.equal (Ok $ Ctr "A" `And` Ctr "B")
 
-    suite "☯︎ Application" do
-      test "❌ x B  ∴  Undefined variable: x" do
-        eval (Var "x" `App` Ctr "B") Nil # Assert.equal (Err $ UndefinedVar "x")
-      test "❌ A y  ∴  Undefined variable: y" do
-        eval (Ctr "A" `App` Var "y") Nil # Assert.equal (Err $ UndefinedVar "y")
-      test "✅ _ B  ∴  _ B" do
-        eval (Any `App` Ctr "B") Nil # Assert.equal (Ok $ Any `App` Ctr "B")
+    suite "☯︎ eval Application" do
+      test "❌ _ B  ∴  Not a value: _" do
+        eval (Any `App` Ctr "B") Nil # Assert.equal (Err $ NotAValue Any)
+      test "❌ A _  ∴  Not a value: _" do
+        eval (Ctr "A" `App` Any) Nil # Assert.equal (Err $ NotAValue Any)
+      test "❌ 1 B  ∴  Not a function: 1" do
+        eval (Int 1 `App` Ctr "B") Nil # Assert.equal (Err $ NotAFunction (Int 1))
       test "✅ A B  ∴  A B" do
         eval (Ctr "A" `App` Ctr "B") Nil # Assert.equal (Ok $ Ctr "A" `App` Ctr "B")
       test "✅ x B  Γ{x: x}  ∴  x B" do
         eval (Var "x" `App` Ctr "B") ("x" `Tuple` Var "x" : Nil) # Assert.equal (Ok $ Var "x" `App` Ctr "B")
-      test "✅ A B C  ∴  A B C" do
-        eval (Ctr "A" `App` Ctr "B" `App` Ctr "C") Nil # Assert.equal (Ok $ Ctr "A" `App` Ctr "B" `App` Ctr "C")
       test "✅ (_ -> B) x  Γ{x: x}  ∴  B" do
         eval (Any `To` Ctr "B" `App` Var "x") ("x" `Tuple` Var "x" : Nil) # Assert.equal (Ok $ Ctr "B")
       test "✅ (x -> x) y  Γ{x: x, y: y}  ∴  y" do
@@ -132,32 +129,26 @@ untypedTests =
         eval ((Ctr "A" `To` Ctr "C") `Or` (Ctr "B" `To` Ctr "D") `App` Ctr "C") Nil # Assert.equal (Err $ PatternMismatch (Ctr "B") (Ctr "C"))
       test "✅ (A, B) C  ∴  (A C, B C)" do
         eval ((Ctr "A" `And` Ctr "B") `App` Ctr "C") Nil # Assert.equal (Ok $ Ctr "A" `App` Ctr "C" `And` (Ctr "B" `App` Ctr "C"))
+      test "✅ A B C  ∴  A B C" do
+        eval (Ctr "A" `App` Ctr "B" `App` Ctr "C") Nil # Assert.equal (Ok $ Ctr "A" `App` Ctr "B" `App` Ctr "C")
 
-    suite "☯︎ Addition" do
+    suite "☯︎ eval Addition" do
       test "✅ (+)  ∴  (+)" do
         eval Add Nil # Assert.equal (Ok Add)
       test "✅ (+) 1 2  ∴  3" do
         eval (App (App Add (Int 1)) (Int 2)) Nil # Assert.equal (Ok $ Int 3)
 
-    suite "☯︎ Subtraction" do
+    suite "☯︎ eval Subtraction" do
       test "✅ (-)  ∴  (-)" do
         eval Sub Nil # Assert.equal (Ok Sub)
       test "✅ (-) 2 1  ∴  1" do
         eval (App (App Sub (Int 2)) (Int 1)) Nil # Assert.equal (Ok $ Int 1)
 
-    suite "☯︎ Multiplication" do
+    suite "☯︎ eval Multiplication" do
       test "✅ (*)  ∴  (*)" do
         eval Mul Nil # Assert.equal (Ok Mul)
       test "✅ (*) 2 3  ∴  6" do
         eval (App (App Mul (Int 2)) (Int 3)) Nil # Assert.equal (Ok $ Int 6)
-
-    suite "☯︎ Equals" do
-      test "✅ (==)  ∴  (==)" do
-        eval Eq Nil # Assert.equal (Ok Eq)
-      test "✅ (==) 2 2  ∴  1" do
-        eval (App (App Eq (Int 2)) (Int 2)) Nil # Assert.equal (Ok $ Int 1)
-      test "✅ (==) 2 3  ∴  0" do
-        eval (App (App Eq (Int 2)) (Int 3)) Nil # Assert.equal (Ok $ Int 0)
 
     -- suite "☯︎ Recursive definition" do
     --   test "✅ x@1  ∴  1" do
@@ -179,7 +170,7 @@ untypedTests =
 
     -- suite "☯︎ Factorial" do
     --   test "✅ f  Γ{f: factorial}  ∴  f@factorial" do
-    --     reduce (Var "f") (Tuple "f" factorial : Nil) # Assert.equal (Ok (Rec "f" factorial))
+    --     eval (Var "f") ("f" `Tuple` factorial : Nil) # Assert.equal (Ok (Var "f"))
     --   test "✅ f 0  Γ{f: factorial}  ∴  f@factorial 1" do
     --     reduce (App (Var "f") (Num 0.0)) (Tuple "f" factorial : Nil) # Assert.equal (Ok (App (Rec "f" factorial) (Num 0.0)))
     --   test "✅ f 0  Γ{f: factorial}  ∴  1" do
@@ -207,18 +198,12 @@ untypedTests =
     --   test "✅ a 3 2  Γ{a: ackermann}  ∴  29" do
     --     eval (app2 (Var "a") (Num 3.0) (Num 2.0)) (Tuple "a" ackermann : Nil) # Assert.equal (Ok (Num 29.0))
 
-    -- where
-    --   a = Var "a"
-    --   f = Var "f"
-    --   m = Var "m"
-    --   n = Var "n"
-    --   k0 = Num 0.0
-    --   k1 = Num 1.0
-
-    --   -- f 0 = 1
-    --   -- f n = n * f (n - 1)
-    --   factorial = Lam "n" $
-    --     app2 (eq n k0) k1 (mul n (App f (sub n k1)))
+    where
+      -- f 0 = 1
+      -- f n = n * f (n - 1)
+      factorial =
+        Int 0 `To` Int 1
+        `Or` (Var "n" `To` (Var "n" `mul` (Var "f" `App` (Var "n" `sub` Int 1))))
 
     --   -- a 0 n = n + 1
     --   -- a m 0 = a (m-1) 1

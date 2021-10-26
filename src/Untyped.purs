@@ -21,7 +21,6 @@ data Expr
   | Add             -- (+)
   | Sub             -- (-)
   | Mul             -- (*)
-  | Eq              -- (==)
 
 derive instance Eq Expr
 derive instance Generic Expr _
@@ -31,11 +30,25 @@ instance Show Expr where
 data Error
   = UndefinedVar String
   | PatternMismatch Expr Expr
+  | NotAValue Expr
+  | NotAFunction Expr
 
 derive instance Eq Error
 derive instance Generic Error _
 instance Show Error where
   show x = genericShow x
+
+app2 :: Expr -> Expr -> Expr -> Expr
+app2 f e1 e2 = App (App f e1) e2
+
+add :: Expr -> Expr -> Expr
+add = app2 Add
+
+sub :: Expr -> Expr -> Expr
+sub = app2 Sub
+
+mul :: Expr -> Expr -> Expr
+mul = app2 Mul
 
 get :: forall a. String -> List (Tuple String a) -> Maybe a
 get _ Nil = Nothing
@@ -47,14 +60,23 @@ set key value Nil = Tuple key value : Nil
 set key value (Tuple key' _ : kvs) | key == key' = Tuple key value : kvs
 set key value (Tuple key' value' : kvs) = Tuple key' value' : set key value kvs
 
+declare :: Expr -> List (Tuple String Expr) -> List (Tuple String Expr)
+declare (Var x) env = set x (Var x) env
+declare (To p1 p2) env = declare p2 $ declare p1 env
+declare (And p1 p2) env = declare p2 $ declare p1 env
+declare (App p1 p2) env = declare p2 $ declare p1 env
+declare _ env = env
+
 match :: Expr -> Expr -> List (Tuple String Expr) -> Result Error (List (Tuple String Expr))
-match pattern expr env = do
-  p <- eval pattern env
-  e <- eval expr env
-  case Tuple p e of
+match p e env = do
+  e' <- eval e env
+  case Tuple p e' of
     Tuple Any _ -> Ok env
-    Tuple (Var x) _ -> Ok (set x e env)
     Tuple _ (Var _) -> Ok env
+    Tuple (Var x) _ -> case get x env of
+      Just (Var x') | x == x' -> Ok (set x e' env)
+      Just p' -> match p' e' env
+      Nothing -> Ok (x `Tuple` e' : env)
     Tuple (To p1 p2) (To e1 e2) -> do
       env1 <- match p1 e1 env
       env2 <- match p2 e2 env1
@@ -75,17 +97,17 @@ match pattern expr env = do
     _ -> Err (PatternMismatch p e)
 
 eval :: Expr -> List (Tuple String Expr) -> Result Error Expr
-eval Any _ = Ok Any
+eval Any _ = Err (NotAValue Any)
 eval (Int k) _ = Ok (Int k)
 eval (Ctr c) _ = Ok (Ctr c)
 eval (Var x) env = case get x env of
   Just (Var x') | x == x' -> Ok (Var x)
   Just e -> eval e env
   Nothing -> Err (UndefinedVar x)
+eval (To (Or p1 p2) e) env = eval ((p1 `To` e) `Or` (p2 `To` e)) env
 eval (To p e) env = do
-  p' <- eval p env
-  e' <- eval e env
-  Ok (p' `To` e')
+  e' <- eval e (declare p env)
+  Ok (p `To` e')
 eval (Or e1 e2) env = do
   e1' <- eval e1 env
   e2' <- eval e2 env
@@ -98,12 +120,14 @@ eval (App expr1 expr2) env = do
   e1 <- eval expr1 env
   e2 <- eval expr2 env
   case Tuple e1 e2 of
-    Tuple (To Any e) _ -> eval e env
-    Tuple (To (Var x) e) (Var y) -> eval e (x `Tuple` Var y : env)
-    Tuple _ (Var y) -> Ok (e1 `App` Var y)
+    Tuple (Int k) _ -> Err (NotAFunction (Int k))
     Tuple (To p e) _ -> do
       env' <- match p e2 env
-      eval e env'
+      case Tuple p e2 of
+        Tuple Any _ -> eval e env'
+        Tuple (Var x) (Var y) -> eval e (x `Tuple` Var y : env')
+        Tuple _ (Var y) -> Ok (e1 `App` Var y)
+        _ -> eval e env'
     Tuple (Or p1 p2) _ -> case eval (p1 `App` e2) env of
       Ok e -> Ok e
       Err (PatternMismatch _ _) -> eval (p2 `App` e2) env
@@ -115,10 +139,7 @@ eval (App expr1 expr2) env = do
     Tuple (App Add (Int k1)) (Int k2) -> Ok (Int (k1 + k2))
     Tuple (App Sub (Int k1)) (Int k2) -> Ok (Int (k1 - k2))
     Tuple (App Mul (Int k1)) (Int k2) -> Ok (Int (k1 * k2))
-    Tuple (App Eq (Int k1)) (Int k2) | k1 == k2 -> Ok (Int 1)
-    Tuple (App Eq (Int _)) (Int _) -> Ok (Int 0)
     _ -> Ok (e1 `App` e2)
 eval Add _ = Ok Add
 eval Sub _ = Ok Sub
 eval Mul _ = Ok Mul
-eval Eq _ = Ok Eq
