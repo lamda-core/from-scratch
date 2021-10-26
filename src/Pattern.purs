@@ -11,6 +11,7 @@ import Result (Result(..))
 
 data Expr
   = Any             -- _
+  | Int Int         -- 42
   | Ctr String      -- C
   | Var String      -- x
   | To Expr Expr    -- p -> e
@@ -25,7 +26,7 @@ instance Show Expr where
 
 data Error
   = UndefinedVar String
-  | DoesNotMatch Expr Expr
+  | PatternMismatch Expr Expr
 
 derive instance Eq Error
 derive instance Generic Error _
@@ -42,36 +43,38 @@ set key value Nil = Tuple key value : Nil
 set key value (Tuple key' _ : kvs) | key == key' = Tuple key value : kvs
 set key value (Tuple key' value' : kvs) = Tuple key' value' : set key value kvs
 
-match :: Expr -> Expr -> List (Tuple String Expr) -> Result Error (Tuple Expr (List (Tuple String Expr)))
+match :: Expr -> Expr -> List (Tuple String Expr) -> Result Error (List (Tuple String Expr))
 match pattern expr env = do
   p <- eval pattern env
   e <- eval expr env
   case Tuple p e of
-    Tuple Any _ -> Ok (e `Tuple` env)
-    Tuple (Var x) (Var y) -> Ok (Var y `Tuple` (set x (Var y) env))
-    Tuple _ (Var y) -> Ok (Var y `Tuple` env)
-    Tuple (Ctr x) _ | e == Ctr x -> Ok (e `Tuple` env)
-    Tuple (Var x) _ -> Ok (e `Tuple` set x e env)
+    Tuple Any _ -> Ok env
+    Tuple (Var x) (Var y) -> Ok (set x (Var y) env)
+    Tuple _ (Var y) -> Ok env
+    Tuple (Int k) _ | e == Int k -> Ok env
+    Tuple (Ctr x) _ | e == Ctr x -> Ok env
+    Tuple (Var x) _ -> Ok (set x e env)
     Tuple (To p1 p2) (To e1 e2) -> do
-      Tuple e1' env1 <- match p1 e1 env
-      Tuple e2' env2 <- match p2 e2 env1
-      Ok ((e1' `To` e2') `Tuple` env2)
+      env1 <- match p1 e1 env
+      env2 <- match p2 e2 env1
+      Ok env2
     Tuple (Or p1 p2) _ -> case match p1 e env of
       Ok result -> Ok result
-      Err (DoesNotMatch _ _) -> match p2 e env
+      Err (PatternMismatch _ _) -> match p2 e env
       Err err -> Err err
     Tuple (And p1 p2) (And e1 e2) -> do
-      Tuple e1' env1 <- match p1 e1 env
-      Tuple e2' env2 <- match p2 e2 env1
-      Ok ((e1' `And` e2') `Tuple` env2)
+      env1 <- match p1 e1 env
+      env2 <- match p2 e2 env1
+      Ok env2
     Tuple (App p1 p2) (App e1 e2) -> do
-      Tuple e1' env1 <- match p1 e1 env
-      Tuple e2' env2 <- match p2 e2 env1
-      Ok ((e1' `App` e2') `Tuple` env2)
-    _ -> Err (p `DoesNotMatch` e)
+      env1 <- match p1 e1 env
+      env2 <- match p2 e2 env1
+      Ok env2
+    _ -> Err (PatternMismatch p e)
 
 eval :: Expr -> List (Tuple String Expr) -> Result Error Expr
 eval Any _ = Ok Any
+eval (Int k) _ = Ok (Int k)
 eval (Ctr c) _ = Ok (Ctr c)
 eval (Var x) env = case get x env of
   Just (Var x') | x == x' -> Ok (Var x)
@@ -97,11 +100,11 @@ eval (App expr1 expr2) env = do
     Tuple (To (Var x) e) (Var y) -> eval e (x `Tuple` Var y : env)
     Tuple _ (Var y) -> Ok (e1 `App` Var y)
     Tuple (To p e) _ -> do
-      Tuple _ env' <- match p e2 env
+      env' <- match p e2 env
       eval e env'
     Tuple (Or p1 p2) _ -> case eval (p1 `App` e2) env of
       Ok e -> Ok e
-      Err (DoesNotMatch _ _) -> eval (p2 `App` e2) env
+      Err (PatternMismatch _ _) -> eval (p2 `App` e2) env
       Err err -> Err err
     Tuple (And p1 p2) _ -> do
       e1' <- eval (p1 `App` e2) env
