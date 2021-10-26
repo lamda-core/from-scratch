@@ -13,10 +13,10 @@ data Expr
   = Any             -- _
   | Ctr String      -- C
   | Var String      -- x
-  | To Expr Expr    -- x -> x
-  | Or  Expr Expr   -- x | y
-  | And Expr Expr   -- (x, y)
-  | App Expr Expr   -- x y
+  | To Expr Expr    -- p -> e
+  | Or  Expr Expr   -- e1 | e2
+  | And Expr Expr   -- (e1, e2)
+  | App Expr Expr   -- e1 e2
 
 derive instance Eq Expr
 derive instance Generic Expr _
