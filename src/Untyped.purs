@@ -1,23 +1,27 @@
 module Untyped where
 
+import Prelude
+
 import Data.Generic.Rep (class Generic)
-import Data.List (List(..), elem, (:))
+import Data.List (List(..), (:))
 import Data.Maybe (Maybe(..))
 import Data.Show.Generic (genericShow)
 import Data.Tuple (Tuple(..))
-import Prelude (class Eq, class Show, ($), (*), (+), (-), (==))
 import Result (Result(..))
 
 data Expr
-  = Num Number
-  | Var String
-  | Lam String Expr
-  | App Expr Expr
-  | Rec String Expr
-  | Add
-  | Sub
-  | Mul
-  | Eq
+  = Any             -- _
+  | Int Int         -- 42
+  | Ctr String      -- C
+  | Var String      -- x
+  | To Expr Expr    -- p -> e
+  | Or  Expr Expr   -- e1 | e2
+  | And Expr Expr   -- (e1, e2)
+  | App Expr Expr   -- e1 e2
+  | Add             -- (+)
+  | Sub             -- (-)
+  | Mul             -- (*)
+  | Eq              -- (==)
 
 derive instance Eq Expr
 derive instance Generic Expr _
@@ -26,71 +30,92 @@ instance Show Expr where
 
 data Error
   = UndefinedVar String
-  | NotAFunction Expr
+  | PatternMismatch Expr Expr
 
 derive instance Eq Error
 derive instance Generic Error _
 instance Show Error where
   show x = genericShow x
 
-app2 :: Expr -> Expr -> Expr -> Expr
-app2 f a b = App (App f a) b
-
-add :: Expr -> Expr -> Expr
-add = app2 Add
-
-sub :: Expr -> Expr -> Expr
-sub = app2 Sub
-
-mul :: Expr -> Expr -> Expr
-mul = app2 Mul
-
-eq :: Expr -> Expr -> Expr
-eq = app2 Eq
-
-get :: String -> List (Tuple String Expr) -> Maybe Expr
+get :: forall a. String -> List (Tuple String a) -> Maybe a
 get _ Nil = Nothing
 get x (Tuple x' ex : _) | x == x' = Just ex
 get x (_ : env) = get x env
 
-eval :: Expr -> List (Tuple String Expr) -> Result Error Expr
-eval expr env = case reduce expr env of
-  Ok (App e1 e2) -> case Tuple (eval e1 env) (eval e2 env) of
-    Tuple (Ok (Lam x e)) (Ok e2') -> eval (App (Lam x e) e2') env
-    Tuple (Ok (Rec _ (Lam x e))) (Ok e2') -> eval (App (Lam x e) e2') env
-    Tuple (Ok (App op (Num k1))) (Ok (Num k2)) | elem op [Add, Sub, Mul, Eq] -> reduce (App (App op (Num k1)) (Num k2)) env
-    Tuple (Ok e1') (Ok e2') -> Ok (App e1' e2')
-    Tuple (Err err) _ -> Err err
-    Tuple _ (Err err) -> Err err
-  Ok e -> Ok e
-  Err err -> Err err
+set :: forall k v. Eq k => k -> v -> List (Tuple k v) -> List (Tuple k v)
+set key value Nil = Tuple key value : Nil
+set key value (Tuple key' _ : kvs) | key == key' = Tuple key value : kvs
+set key value (Tuple key' value' : kvs) = Tuple key' value' : set key value kvs
 
-reduce :: Expr -> List (Tuple String Expr) -> Result Error Expr
-reduce (Num k) _ = Ok (Num k)
-reduce (Var x) env = case get x env of
+match :: Expr -> Expr -> List (Tuple String Expr) -> Result Error (List (Tuple String Expr))
+match pattern expr env = do
+  p <- eval pattern env
+  e <- eval expr env
+  case Tuple p e of
+    Tuple Any _ -> Ok env
+    Tuple (Var x) _ -> Ok (set x e env)
+    Tuple _ (Var _) -> Ok env
+    Tuple (To p1 p2) (To e1 e2) -> do
+      env1 <- match p1 e1 env
+      env2 <- match p2 e2 env1
+      Ok env2
+    Tuple (Or p1 p2) _ -> case match p1 e env of
+      Ok result -> Ok result
+      Err (PatternMismatch _ _) -> match p2 e env
+      Err err -> Err err
+    Tuple (And p1 p2) (And e1 e2) -> do
+      env1 <- match p1 e1 env
+      env2 <- match p2 e2 env1
+      Ok env2
+    Tuple (App p1 p2) (App e1 e2) -> do
+      env1 <- match p1 e1 env
+      env2 <- match p2 e2 env1
+      Ok env2
+    Tuple p' _ | p' == e -> Ok env
+    _ -> Err (PatternMismatch p e)
+
+eval :: Expr -> List (Tuple String Expr) -> Result Error Expr
+eval Any _ = Ok Any
+eval (Int k) _ = Ok (Int k)
+eval (Ctr c) _ = Ok (Ctr c)
+eval (Var x) env = case get x env of
   Just (Var x') | x == x' -> Ok (Var x)
-  Just e -> reduce e (Tuple x (Rec x $ Var x) : env)
+  Just e -> eval e env
   Nothing -> Err (UndefinedVar x)
-reduce (Lam x e) env = case reduce e (Tuple x (Var x) : env) of
-  Ok (Rec y e') -> Ok (Rec y $ Lam x e')
-  Ok e' -> Ok (Lam x e')
-  Err err -> Err err
-reduce (App e1 e2) env = case Tuple (reduce e1 env) (reduce e2 env) of
-  Tuple (Ok (Num k)) _ -> Err (NotAFunction (Num k))
-  Tuple (Ok (Lam x e)) (Ok e2') -> reduce e (Tuple x e2' : env)
-  Tuple (Ok (Rec x (Lam y e))) (Ok e2') -> Ok (App (Rec x $ Lam y e) e2')
-  Tuple (Ok (Rec x e1')) (Ok (Rec x' e2')) | x == x' -> Ok (Rec x $ App e1' e2')
-  Tuple (Ok (Rec x e1')) (Ok (Rec y e2')) -> Ok (Rec x $ Rec y $ App e1' e2')
-  Tuple (Ok (Rec x e1')) (Ok e2') -> Ok (Rec x $ App e1' e2')
-  Tuple (Ok e1') (Ok (Rec x e2')) -> Ok (Rec x $ App e1' e2')
-  Tuple (Ok (App Add (Num k1))) (Ok (Num k2)) -> Ok (Num (k1 + k2))
-  Tuple (Ok (App Sub (Num k1))) (Ok (Num k2)) -> Ok (Num (k1 - k2))
-  Tuple (Ok (App Mul (Num k1))) (Ok (Num k2)) -> Ok (Num (k1 * k2))
-  Tuple (Ok (App Eq (Num k1))) (Ok (Num k2)) | k1 == k2 -> Ok (Lam "True" $ Lam "False" $ Var "True")
-  Tuple (Ok (App Eq (Num _))) (Ok (Num _)) -> Ok (Lam "True" $ Lam "False" $ Var "False")
-  Tuple (Ok e1') (Ok e2') -> Ok (App e1' e2')
-  Tuple (Err err) _ -> Err err
-  Tuple _ (Err err) -> Err err
-reduce (Rec x (Var x')) _ | x == x' = Ok (Rec x $ Var x)
-reduce (Rec x e) env = reduce e (Tuple x (Rec x $ Var x) : env)
-reduce e _ = Ok e
+eval (To p e) env = do
+  p' <- eval p env
+  e' <- eval e env
+  Ok (p' `To` e')
+eval (Or e1 e2) env = do
+  e1' <- eval e1 env
+  e2' <- eval e2 env
+  Ok (e1' `Or` e2')
+eval (And e1 e2) env = do
+  e1' <- eval e1 env
+  e2' <- eval e2 env
+  Ok (e1' `And` e2')
+eval (App expr1 expr2) env = do
+  e1 <- eval expr1 env
+  e2 <- eval expr2 env
+  case Tuple e1 e2 of
+    Tuple (To Any e) _ -> eval e env
+    Tuple (To (Var x) e) (Var y) -> eval e (x `Tuple` Var y : env)
+    Tuple _ (Var y) -> Ok (e1 `App` Var y)
+    Tuple (To p e) _ -> do
+      env' <- match p e2 env
+      eval e env'
+    Tuple (Or p1 p2) _ -> case eval (p1 `App` e2) env of
+      Ok e -> Ok e
+      Err (PatternMismatch _ _) -> eval (p2 `App` e2) env
+      Err err -> Err err
+    Tuple (And p1 p2) _ -> do
+      e1' <- eval (p1 `App` e2) env
+      e2' <- eval (p2 `App` e2) env
+      Ok (e1' `And` e2')
+    Tuple (App Add (Int k1)) (Int k2) -> Ok (Int (k1 + k2))
+    Tuple (App Sub (Int k1)) (Int k2) -> Ok (Int (k1 - k2))
+    Tuple (App Mul (Int k1)) (Int k2) -> Ok (Int (k1 * k2))
+    Tuple (App Eq (Int k1)) (Int k2) | k1 == k2 -> Ok (Int 1)
+    Tuple (App Eq (Int _)) (Int _) -> Ok (Int 0)
+    _ -> Ok (e1 `App` e2)
+eval e _ = Ok e
