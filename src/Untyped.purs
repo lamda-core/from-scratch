@@ -3,7 +3,6 @@ module Untyped where
 import Prelude
 
 import Data.Generic.Rep (class Generic)
-import Data.List (List(..), union, (:))
 import Data.Maybe (Maybe(..))
 import Data.Show.Generic (genericShow)
 import Dict (Dict, KV(..), get, set)
@@ -70,15 +69,6 @@ occurs x (App e1 e2) = x `occurs` e1 || x `occurs` e2
 occurs x (As e y) | x /= y = x `occurs` e
 occurs _ _ = false
 
-occurring :: Expr -> List String
-occurring (Var x) = x : Nil
-occurring (To p1 p2)  = occurring p1 `union` occurring p2
-occurring (Or p1 p2)  = occurring p1 `union` occurring p2
-occurring (And p1 p2) = occurring p1 `union` occurring p2
-occurring (App p1 p2) = occurring p1 `union` occurring p2
-occurring (As p x) = x : occurring p
-occurring _ = Nil
-
 match :: Expr -> Expr -> Env -> Result Error Env
 match p e env = do
   e' <- eval e env
@@ -88,7 +78,7 @@ match p e env = do
     KV (Var x) _ -> case get x env of
       Just (Var x') | x == x' -> Ok (set x e' env)
       Just p' -> match p' e' env
-      Nothing -> Ok (x `KV` e' : env)
+      Nothing -> Ok (set x e' env)
     KV (To p1 p2) (To e1 e2) -> do
       env1 <- match p1 e1 env
       env2 <- match p2 e2 env1
@@ -115,7 +105,7 @@ eval (Ctr c) _ = Ok (Ctr c)
 eval (Var x) env = case get x env of
   Just (Var x') | x == x' -> Ok (Var x)
   Just e -> do
-    e' <- eval e (x `KV` Var x : env)
+    e' <- eval e (set x (Var x) env)
     if x `occurs` e'
       then Ok (e' `As` x)
       else Ok e'
@@ -141,7 +131,7 @@ eval (App expr1 expr2) env = do
       env' <- match p e2 env
       case KV p e2 of
         KV Any _ -> eval e env'
-        KV (Var x) (Var y) -> eval e (x `KV` Var y : env')
+        KV (Var x) (Var y) -> eval e (set x (Var y) env')
         KV _ (Var y) -> Ok (e1 `App` Var y)
         _ -> eval e env'
     KV (Or p1 p2) _ -> case eval (p1 `App` e2) env of
@@ -156,7 +146,7 @@ eval (App expr1 expr2) env = do
     KV (App Sub (Int k1)) (Int k2) -> Ok (Int (k1 - k2))
     KV (App Mul (Int k1)) (Int k2) -> Ok (Int (k1 * k2))
     _ -> Ok (e1 `App` e2)
-eval (As e x) env = eval (Var x) (x `KV` e : env)
+eval (As e x) env = eval (Var x) (set x e env)
 eval Add _ = Ok Add
 eval Sub _ = Ok Sub
 eval Mul _ = Ok Mul
