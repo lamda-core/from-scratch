@@ -13,11 +13,11 @@ data Expr
   | Int Int         -- 42
   | Ctr String      -- C
   | Var String      -- x
+  | As  Expr String -- e @ x
   | To  Expr Expr   -- p -> e
   | Or  Expr Expr   -- e1 | e2
   | And Expr Expr   -- (e1, e2)
   | App Expr Expr   -- e1 e2
-  | As  Expr String -- e @ x
   | Add             -- (+)
   | Sub             -- (-)
   | Mul             -- (*)
@@ -25,7 +25,39 @@ data Expr
 derive instance Eq Expr
 derive instance Generic Expr _
 instance Show Expr where
-  show x = genericShow x
+  show Any = "_"
+  show (Int k) = show k
+  show (Ctr c) = c
+  show (Var x) = x
+  show (As p x) = "(" <> show p <> ")@" <> x
+  show (To p@(To _ _) e) = "(" <> show p <> ") -> " <> show e
+  show (To p@(Or _ _) e) = "(" <> show p <> ") -> " <> show e
+  show (To p@(And _ _) e@(And _ _)) = "(" <> show p <> ") -> (" <> show e <> ")"
+  show (To p@(And _ _) e) = "(" <> show p <> ") -> " <> show e
+  show (To p e@(And _ _)) = show p <> " -> (" <> show e <> ")"
+  show (To p e) = show p <> " -> " <> show e
+  show (Or e1@(And _ _) e2@(And _ _)) = "(" <> show e1 <> ") | (" <> show e2 <> ")"
+  show (Or e1@(And _ _) e2) = "(" <> show e1 <> ") | " <> show e2
+  show (Or e1 e2@(And _ _)) = show e1 <> " | (" <> show e2 <> ")"
+  show (Or e1 e2) = show e1 <> " | " <> show e2
+  show (And e1 e2) = show e1 <> ", " <> show e2
+  show (App e1@(To _ _) e2@(To _ _)) = "(" <> show e1 <> ") (" <> show e2 <> ")"
+  show (App e1@(To _ _) e2) = "(" <> show e1 <> ") " <> show e2
+  show (App e1 e2@(To _ _)) = show e1 <> " (" <> show e2 <> ")"
+  show (App e1@(Or _ _) e2@(Or _ _)) = "(" <> show e1 <> ") (" <> show e2 <> ")"
+  show (App e1@(Or _ _) e2) = "(" <> show e1 <> ") " <> show e2
+  show (App e1 e2@(Or _ _)) = show e1 <> " (" <> show e2 <> ")"
+  show (App e1@(And _ _) e2@(And _ _)) = "(" <> show e1 <> ") (" <> show e2 <> ")"
+  show (App e1@(And _ _) e2) = "(" <> show e1 <> ") " <> show e2
+  show (App e1 e2@(And _ _)) = show e1 <> " (" <> show e2 <> ")"
+  show (App (App Add e1) e2) = show e1 <> " + " <> show e2
+  show (App (App Sub e1) e2) = show e1 <> " - " <> show e2
+  show (App (App Mul e1) e2) = show e1 <> " * " <> show e2
+  show (App e1 e2@(App _ _)) = show e1 <> " (" <> show e2 <> ")"
+  show (App e1 e2) = show e1 <> " " <> show e2
+  show Add = "(+)"
+  show Sub = "(-)"
+  show Mul = "(*)"
 
 data Error
   = UndefinedVar String
@@ -43,30 +75,30 @@ type Env = Dict String Expr
 app2 :: Expr -> Expr -> Expr -> Expr
 app2 f e1 e2 = App (App f e1) e2
 
-add :: Expr -> Expr -> Expr
-add = app2 Add
+add2 :: Expr -> Expr -> Expr
+add2 = app2 Add
 
-sub :: Expr -> Expr -> Expr
-sub = app2 Sub
+sub2 :: Expr -> Expr -> Expr
+sub2 = app2 Sub
 
-mul :: Expr -> Expr -> Expr
-mul = app2 Mul
+mul2 :: Expr -> Expr -> Expr
+mul2 = app2 Mul
 
 declare :: Expr -> Env -> Env
-declare (Var x) env = set x (Var x) env
+declare (Var x) env  = set x (Var x) env
+declare (As e x) env = set x (Var x) $ declare e env
 declare (To p1 p2) env = declare p2 $ declare p1 env
 declare (And p1 p2) env = declare p2 $ declare p1 env
 declare (App p1 p2) env = declare p2 $ declare p1 env
-declare (As e x) env = set x (Var x) $ declare e env
 declare _ env = env
 
 occurs :: String -> Expr -> Boolean
 occurs x (Var x') | x == x' = true
-occurs x (To e1 e2)  = x `occurs` e1 || x `occurs` e2
+occurs x (As e y) | x /= y  = x `occurs` e
+occurs x (To e1 e2)  = not (x `occurs` e1) && x `occurs` e2
 occurs x (Or e1 e2)  = x `occurs` e1 || x `occurs` e2
 occurs x (And e1 e2) = x `occurs` e1 || x `occurs` e2
 occurs x (App e1 e2) = x `occurs` e1 || x `occurs` e2
-occurs x (As e y) | x /= y = x `occurs` e
 occurs _ _ = false
 
 match :: Expr -> Expr -> Env -> Result Error Env
@@ -75,10 +107,7 @@ match p e env = do
   case KV p e' of
     KV Any _ -> Ok env
     KV _ (Var _) -> Ok env
-    KV (Var x) _ -> case get x env of
-      Just (Var x') | x == x' -> Ok (set x e' env)
-      Just p' -> match p' e' env
-      Nothing -> Ok (set x e' env)
+    KV (Var x) _ -> Ok (set x e' env)
     KV (To p1 p2) (To e1 e2) -> do
       env1 <- match p1 e1 env
       env2 <- match p2 e2 env1
@@ -110,7 +139,7 @@ eval (Var x) env = case get x env of
       then Ok (e' `As` x)
       else Ok e'
   Nothing -> Err (UndefinedVar x)
-eval (To (Or p1 p2) e) env = eval ((p1 `To` e) `Or` (p2 `To` e)) env
+eval (As e x) env = eval (Var x) (set x e env)
 eval (To p e) env = do
   e' <- eval e (declare p env)
   Ok (p `To` e')
@@ -127,14 +156,16 @@ eval (App expr1 expr2) env = do
   e2 <- eval expr2 env
   case KV e1 e2 of
     KV (Int k) _ -> Err (NotAFunction (Int k))
+    KV _ (Var _) -> Ok (e1 `App` e2)
+    KV _ (App _ _) -> Ok (e1 `App` e2)
     KV (To p e) _ -> do
       env' <- match p e2 env
-      case KV p e2 of
-        KV Any _ -> eval e env'
-        KV (Var x) (Var y) -> eval e (set x (Var y) env')
-        KV _ (Var y) -> Ok (e1 `App` Var y)
-        _ -> eval e env'
+      eval e env'
+    KV (As p x) _ -> eval (p `App` e2) (set x p env)
     KV (Or p1 p2) _ -> case eval (p1 `App` e2) env of
+      Ok (To Any e) -> Ok (Any `To` e)
+      Ok (To (Var x) e) -> Ok (Var x `To` e)
+      Ok (To p e) -> Ok ((p `To` e) `Or` (p2 `App` e2))
       Ok e -> Ok e
       Err (PatternMismatch _ _) -> eval (p2 `App` e2) env
       Err err -> Err err
@@ -146,7 +177,6 @@ eval (App expr1 expr2) env = do
     KV (App Sub (Int k1)) (Int k2) -> Ok (Int (k1 - k2))
     KV (App Mul (Int k1)) (Int k2) -> Ok (Int (k1 * k2))
     _ -> Ok (e1 `App` e2)
-eval (As e x) env = eval (Var x) (set x e env)
 eval Add _ = Ok Add
 eval Sub _ = Ok Sub
 eval Mul _ = Ok Mul
