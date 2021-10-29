@@ -12,4 +12,4 @@ main :: Effect Unit
 main = runTest do
     dictTests
     untypedTests
-    -- typedTests
+    typedTests
