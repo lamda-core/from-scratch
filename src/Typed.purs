@@ -107,6 +107,14 @@ occurs x (And e1 e2) = x `occurs` e1 || x `occurs` e2
 occurs x (App e1 e2) = x `occurs` e1 || x `occurs` e2
 occurs _ _ = false
 
+-- TODO: once a pattern variable is bound, replace any occurrances in the subsequent patterns
+-- This might require to match over the entire case instead of only the pattern.
+-- Example:
+--  (x -> x -> y -> (x, y)) 1 1 2
+--  (1 -> y -> (1, y)) 1 2
+--  (y -> (1, y)) 2
+--  (1, 2)
+-- eval the subpattern in an env with x set
 match = 0
 -- match :: Expr -> Expr -> Env -> Result Error Env
 -- match p e env = do
@@ -134,6 +142,7 @@ match = 0
 --     KV p' _ | p' == e -> Ok env
 --     _ -> Err (PatternMismatch p e)
 
+-- TODO: add tests
 unify :: Expr -> Expr -> Env -> Result Error (KV Expr Env)
 unify type1 type2 env = do
   KV t1 k1 <- eval type1 env
@@ -143,6 +152,7 @@ unify type1 type2 env = do
     KV _ (Var x) | k2 == Var x -> Ok (t1 `KV` set x t1 env)
     _ -> Err (TypeMismatch t1 t2)
 
+-- TODO: add tests
 evalP :: Expr -> Env -> KV Expr Env
 evalP (Var x) env = (Var x) `KV` (set x (Var x) env)
 evalP (As p x) env = do
@@ -162,6 +172,7 @@ evalP (App p1 p2) env = do
   (t1 `App` t2) `KV` env2
 evalP p env = p `KV` env
 
+-- TODO: make sure cases cover all possibilities
 eval :: Expr -> Env -> Result Error (KV Expr Expr)
 eval Any _ = Ok (Any `KV` Any)
 eval Typ _ = Ok (Typ `KV` Typ)
