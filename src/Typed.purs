@@ -220,7 +220,7 @@ eval (App e1 e2) env = do
         KV (App Sub (Int k1)) (Int k2) -> eval (Int (k1 - k2)) empty
         KV (App Mul (Int k1)) (Int k2) -> eval (Int (k1 * k2)) empty
         _ -> Ok ((e1' `App` e2') `KV` t)
-    _ -> Err (UndefinedName ("TODO: eval App of type " <> show ab'))-- (TypeMismatch ab (a `To` Any))
+    _ -> Err (TypeMismatch ab (a `To` Any)) -- unreachable
 eval Add _ = Ok (Add `KV` (Var "a" `To` (Var "a" `To` Var "a")))
 eval Sub _ = Ok (Sub `KV` (Var "a" `To` (Var "a" `To` Var "a")))
 eval Mul _ = Ok (Mul `KV` (Var "a" `To` (Var "a" `To` Var "a")))
