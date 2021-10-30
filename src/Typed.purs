@@ -101,24 +101,21 @@ occurs x (App e1 e2) = x `occurs` e1 || x `occurs` e2
 occurs _ _ = false
 
 unify :: Expr -> Expr -> Env -> Result Error (KV Expr Env)
-unify Any b env = do
-  KV b' _ <- eval b env
-  Ok (b' `KV` env)
-unify a Any env = do
-  KV a' _ <- eval a env
-  Ok (a' `KV` env)
+unify Any Any env = Ok (Any `KV` env)
+unify Any (Var x) env = case get x env of
+  Just (Var x') | x == x' -> Ok (Var x `KV` env)
+  Just e -> unify Any e env
+  Nothing -> Ok (Var x `KV` (set x (Var x) env))
+unify Any b env = Ok (b `KV` env)
+unify a Any env = unify Any a env
 unify (Var x) b env = case get x env of
-  Just (Var x') | x == x' -> do
-    KV b' _ <- eval b (set x b env)
-    Ok (b' `KV` set x b' env)
+  Just (Var x') | x == x' -> unify Any b (set x b env)
   Just a -> unify a b env
-  Nothing -> unify (Var x) b (set x (Var x) env)
+  Nothing -> unify Any b (set x b env)
 unify a (Var x) env = case get x env of
-  Just (Var x') | x == x' -> do
-    KV a' _ <- eval a (set x a env)
-    Ok (a' `KV` set x a' env)
+  Just (Var x') | x == x' -> unify Any a (set x a env)
   Just b -> unify a b env
-  Nothing -> unify a (Var x) (set x (Var x) env)
+  Nothing -> unify Any a (set x a env)
 unify (As a x) b env = unify a b (set x b env)
 unify a (As b x) env = unify a b (set x a env)
 unify (Ann a t) b env = do
