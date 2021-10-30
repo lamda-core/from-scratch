@@ -5,7 +5,7 @@ import Prelude
 import Data.Generic.Rep (class Generic)
 import Data.Maybe (Maybe(..))
 import Data.Show.Generic (genericShow)
-import Dict (Dict, KV(..), empty, get, set, union)
+import Dict (Dict, KV(..), empty, get, set)
 import Result (Result(..))
 
 data Expr
@@ -100,15 +100,6 @@ occurs x (And e1 e2) = x `occurs` e1 || x `occurs` e2
 occurs x (App e1 e2) = x `occurs` e1 || x `occurs` e2
 occurs _ _ = false
 
-declare :: Expr -> Env -> Env
-declare (Var x) env  = set x (Var x) env
-declare (As e x) env = set x (Var x) $ declare e env
-declare (Ann e t) env = declare t $ declare e env
-declare (To p1 p2) env = declare p2 $ declare p1 env
-declare (And p1 p2) env = declare p2 $ declare p1 env
-declare (App p1 p2) env = declare p2 $ declare p1 env
-declare _ env = env
-
 unify :: Expr -> Expr -> Env -> Result Error (KV Expr Env)
 unify Any b env = do
   KV b' _ <- eval b env
@@ -160,12 +151,6 @@ unify (App a1 b1) (App a2 b2) env =
 unify a b env | a == b = Ok (a `KV` env)
 unify a b _ = Err (TypeMismatch a b)
 
--- TODO: make sure cases cover all possibilities
--- Consider adding MissingCases and RedundantCases errors
---    As eval happens, they can be updated until all cases are covered
--- TODO: try to replace `As` for recursive functions with a Var and always check if there's a recursive value or if it's a free variable
--- move out all the App cases to their own,
--- catch-all case should be explicit about cases that end recursion and simply re-`eval` other cases (?)
 eval :: Expr -> Env -> Result Error (KV Expr Expr)
 eval Any _ = Ok (Any `KV` Any)
 eval Typ _ = Ok (Typ `KV` Typ)
@@ -238,4 +223,3 @@ eval (App e1 e2) env = do
 eval Add _ = Ok (Add `KV` (Var "a" `To` (Var "a" `To` Var "a")))
 eval Sub _ = Ok (Sub `KV` (Var "a" `To` (Var "a" `To` Var "a")))
 eval Mul _ = Ok (Mul `KV` (Var "a" `To` (Var "a" `To` Var "a")))
-eval e _ = Err (UndefinedName ("Not implemented: eval " <> show e))
