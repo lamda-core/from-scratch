@@ -13,49 +13,49 @@ typedTests :: Free TestF Unit
 typedTests = 
   suite "--== Typed ==--" do
     suite "☯︎ unify" do
-      -- test "❌ x == y  ∴  Undefined name: x" do
-      --   unify (Var "x") (Var "y") empty # Assert.equal (Err $ UndefinedName "x")
-      -- test "❌ _ == y  ∴  Undefined name: y" do
-      --   unify Any (Var "y") empty # Assert.equal (Err $ UndefinedName "y")
       test "❌ Type == Int  ∴  Type mismatch: Type ≠ Int" do
         unify Typ IntT empty # Assert.equal (Err $ TypeMismatch Typ IntT)
       test "✅ Type == Type  ∴  Type" do
         unify Typ Typ empty # Assert.equal (Ok $ Typ `KV` empty)
 
-      test "✅ _ == Type  ∴  Type" do
-        unify Any Typ empty # Assert.equal (Ok $ Typ `KV` empty)
-      test "✅ Type == _  ∴  Type" do
-        unify Typ Any empty # Assert.equal (Ok $ Typ `KV` empty)
-      test "✅ x == Type  ∴  Type  Γ{x: Type}" do
-        unify (Var "x") Typ empty # Assert.equal (Ok $ Typ `KV` dict ["x" `KV` Typ])
-      test "✅ x == Type  Γ{x: x}  ∴  Type  Γ{x: Type}" do
-        unify (Var "x") Typ (dict ["x" `KV` Var "x"]) # Assert.equal (Ok $ Typ `KV` dict ["x" `KV` Typ])
-      test "❌ x == Type  Γ{x: Int}  ∴  Type mismatch: Int ≠ Type" do
-        unify (Var "x") Typ (dict ["x" `KV` IntT]) # Assert.equal (Err $ TypeMismatch IntT Typ)
-      test "✅ Type == x  ∴  Type  Γ{x: Type}" do
-        unify Typ (Var "x") empty # Assert.equal (Ok $ Typ `KV` dict ["x" `KV` Typ])
-      test "✅ Type == x Γ{x: x}  ∴  Type  Γ{x: Type}" do
-        unify Typ (Var "x") (dict ["x" `KV` Var "x"]) # Assert.equal (Ok $ Typ `KV` dict ["x" `KV` Typ])
-      test "❌ Type == x  Γ{x: Int}  ∴  Type mismatch: Type ≠ Int" do
-        unify Typ (Var "x") (dict ["x" `KV` IntT]) # Assert.equal (Err $ TypeMismatch Typ IntT)
+      test "✅ _ == x  Γ{x: Int}  ∴  Int" do
+        unify Any (Var "x") (dict ["x" `KV` IntT]) # Assert.equal (Ok $ IntT `KV` (dict ["x" `KV` IntT]))
+      test "✅ x == _  Γ{x: Int}  ∴  Int" do
+        unify (Var "x") Any (dict ["x" `KV` IntT]) # Assert.equal (Ok $ IntT `KV` (dict ["x" `KV` IntT]))
+      test "✅ x == y  Γ{y: Int}  ∴  Int  Γ{y: Int, x: Int}" do
+        unify (Var "x") (Var "y") (dict ["y" `KV` IntT]) # Assert.equal (Ok $ IntT `KV` dict ["y" `KV` IntT, "x" `KV` IntT])
+      test "✅ x == y  Γ{x: Int}  ∴  Int  Γ{x: Int, y: Int}" do
+        unify (Var "x") (Var "y") (dict ["x" `KV` IntT]) # Assert.equal (Ok $ IntT `KV` dict ["x" `KV` IntT, "y" `KV` IntT])
+      test "✅ x == y  Γ{x: x, y: Int}  ∴  Int  Γ{x: Int, y: Int}" do
+        unify (Var "x") (Var "y") (dict ["x" `KV` Var "x", "y" `KV` IntT]) # Assert.equal (Ok $ IntT `KV` dict ["x" `KV` IntT, "y" `KV` IntT])
+      test "✅ x == y  Γ{x: Int, y: y}  ∴  Int  Γ{x: Int, y: Int}" do
+        unify (Var "x") (Var "y") (dict ["x" `KV` IntT, "y" `KV` Var "y"]) # Assert.equal (Ok $ IntT `KV` dict ["x" `KV` IntT, "y" `KV` IntT])
+      test "✅ Int == x  ∴  Int  Γ{x: Int}" do
+        unify IntT (Var "x") empty # Assert.equal (Ok $ IntT `KV` dict ["x" `KV` IntT])
+      test "✅ Int == x  Γ{x: x}  ∴  Int  Γ{x: Int}" do
+        unify IntT (Var "x") (dict ["x" `KV` Var "x"]) # Assert.equal (Ok $ IntT `KV` dict ["x" `KV` IntT])
+      test "❌ Int == x  Γ{x: Type}  ∴  Int mismatch: Int ≠ Type" do
+        unify IntT (Var "x") (dict ["x" `KV` Typ]) # Assert.equal (Err $ TypeMismatch IntT Typ)
       test "✅ _@x == 1  ∴  1  Γ{x: 1}" do
         unify (Any `As` "x") (Int 1) empty # Assert.equal (Ok $ Int 1 `KV` (dict ["x" `KV` Int 1]))
       test "✅ 1 == _@x  ∴  1  Γ{x: 1}" do
         unify (Int 1) (Any `As` "x") empty # Assert.equal (Ok $ Int 1 `KV` (dict ["x" `KV` Int 1]))
       test "❌ (x : Int) == Type  ∴  Type mismatch: Type ≠ Int" do
         unify (Var "x" `Ann` IntT) Typ empty # Assert.equal (Err $ TypeMismatch Typ IntT)
-      test "✅ (_ : x) == 1  ∴  (1 : Int)  Γ{x: Int}" do
-        unify (Any `Ann` Var "x") (Int 1) empty # Assert.equal (Ok $ (Int 1 `Ann` IntT) `KV` (dict ["x" `KV` IntT]))
+      test "✅ (_ : x) == 1  ∴  1  Γ{x: Int}" do
+        unify (Any `Ann` Var "x") (Int 1) empty # Assert.equal (Ok $ Int 1 `KV` (dict ["x" `KV` IntT]))
       test "❌ Type == (x : Int)  ∴  Type mismatch: Type ≠ Int" do
         unify Typ (Var "x" `Ann` IntT) empty # Assert.equal (Err $ TypeMismatch Typ IntT)
-      test "✅ 1 == (_ : x)  ∴  (1 : Int)  Γ{x: Int}" do
-        unify (Int 1) (Any `Ann` Var "x") empty # Assert.equal (Ok $ (Int 1 `Ann` IntT) `KV` (dict ["x" `KV` IntT]))
+      test "✅ 1 == (_ : x)  ∴  1  Γ{x: Int}" do
+        unify (Int 1) (Any `Ann` Var "x") empty # Assert.equal (Ok $ Int 1 `KV` (dict ["x" `KV` IntT]))
       test "❌ x -> x == Type -> Int  ∴  Type mismatch: Type ≠ Int" do
         unify (Var "x" `To` Var "x") (Typ `To` IntT) empty # Assert.equal (Err $ TypeMismatch Typ IntT)
+      test "✅ x -> y == Type -> Int  ∴  Type -> Int  Γ{x: Type, y: Int}" do
+        unify (Var "x" `To` Var "y") (Typ `To` IntT) empty # Assert.equal (Ok $ (Typ `To` IntT) `KV` (dict ["x" `KV` Typ, "y" `KV` IntT]))
+      test "❌ x -> Int == Type -> x  ∴  Type mismatch: Int ≠ Type" do
+        unify (Var "x" `To` IntT) (Typ `To` Var "x") empty # Assert.equal (Err $ TypeMismatch IntT Typ)
       test "✅ x -> Int == Type -> y  ∴  Type -> Int  Γ{x: Type, y: Int}" do
         unify (Var "x" `To` IntT) (Typ `To` Var "y") empty # Assert.equal (Ok $ (Typ `To` IntT) `KV` dict ["x" `KV` Typ, "y" `KV` IntT])
-      test "✅ x -> Int == Type -> x  ∴  Type -> Int  Γ{x: Int}" do
-        unify (Var "x" `To` IntT) (Typ `To` Var "x") empty # Assert.equal (Ok $ (Typ `To` IntT) `KV` dict ["x" `KV` IntT])
       test "✅ Type | Int == Type  ∴  Type" do
         unify (Typ `Or` IntT) Typ empty # Assert.equal (Ok $ Typ `KV` empty)
       test "✅ Type | Int == Int  ∴  Int" do
@@ -66,10 +66,12 @@ typedTests =
         unify IntT (Typ `Or` IntT) empty # Assert.equal (Ok $ IntT `KV` empty)
       test "❌ (x, x) == (Type, Int)  ∴  Type mismatch: Type ≠ Int" do
         unify (Var "x" `And` Var "x") (Typ `And` IntT) empty # Assert.equal (Err $ TypeMismatch Typ IntT)
+      test "✅ (x, y) == (Type, Int)  ∴  (Type, Int)  Γ{x: Type, y: Int}" do
+        unify (Var "x" `And` Var "y") (Typ `And` IntT) empty # Assert.equal (Ok $ (Typ `And` IntT) `KV` (dict ["x" `KV` Typ, "y" `KV` IntT]))
+      test "❌ (x, Int) == (Type, x)  ∴  Type mismatch: Int ≠ Type" do
+        unify (Var "x" `And` IntT) (Typ `And` Var "x") empty # Assert.equal (Err $ TypeMismatch IntT Typ)
       test "✅ (x, Int) == (Type, y)  ∴  (Type, Int)  Γ{x: Type, y: Int}" do
         unify (Var "x" `And` IntT) (Typ `And` Var "y") empty # Assert.equal (Ok $ (Typ `And` IntT) `KV` dict ["x" `KV` Typ, "y" `KV` IntT])
-      test "✅ (x, Int) == (Type, x)  ∴  (Type, Int)  Γ{x: Int}" do
-        unify (Var "x" `And` IntT) (Typ `And` Var "x") empty # Assert.equal (Ok $ (Typ `And` IntT) `KV` dict ["x" `KV` IntT])
       -- test "✅ x Int == Type y  Γ{x: x, y: y}  ∴  Type -> Int  Γ{x: Type, y: Int}" do
       --   unify (Var "x" `App` IntT) (Typ `App` Var "y") (dict ["x" `KV` Var "x", "y" `KV` Var "y"]) # Assert.equal (Ok $ (Typ `App` IntT) `KV` dict ["x" `KV` Typ, "y" `KV` IntT])
 
@@ -120,9 +122,6 @@ typedTests =
         eval (Int 1 `Or` Typ) empty # Assert.equal (Err $ TypeMismatch IntT Typ)
       test "✅ 1 | y  Γ{y: y}  ∴  (1 | y) : Int" do
         eval (Int 1 `Or` Var "y") (dict ["y" `KV` Var "y"]) # Assert.equal (Ok $ (Int 1 `Or` Var "y") `KV` IntT)
-      -- TODO: test all cases have the same type
-      -- test "❌ (1 -> 2 | x -> Type) 1  ∴  Type mismatch: Int ≠ Type" do
-      --   eval (((Int 1 `To` Int 2) `Or` (Var "x" `To` Typ)) `App` Int 1) empty # Assert.equal (Err $ TypeMismatch IntT Typ)
       -- TODO: test for missing cases
       -- TODO: test for redundant cases
 
@@ -141,41 +140,26 @@ typedTests =
         eval (((Int 1 `To` Int 2) `Or` (Var "x" `To` Var "x")) `App` Int 1) empty # Assert.equal (Ok $ Int 2 `KV` IntT)
       test "✅ (1 -> 2 | x -> x) 3  ∴  3 : Int" do
         eval (((Int 1 `To` Int 2) `Or` (Var "x" `To` Var "x")) `App` Int 3) empty # Assert.equal (Ok $ Int 3 `KV` IntT)
+      test "✅ (_ -> 1, x -> x) 2  ∴  (1, 2) : (Int, Int)" do
+        eval (((Any `To` Int 1) `And` (Var "x" `To` Var "x")) `App` Int 2) empty # Assert.equal (Ok $ (Int 1 `And` Int 2) `KV` (IntT `And` IntT))
 
-      -- test "✅ (A -> B) x  Γ{x: x}  ∴  (A -> A) x" do
-      --   eval (Ctr "A" `To` Ctr "B" `App` Var "x") (dict ["x" `KV` Var "x"]) # Assert.equal (Ok $ (Ctr "A" `To` Ctr "B") `App` Var "x")
-    --   test "❌ (A -> B) C  ∴  Pattern mismatch: A ≠ C" do
-    --     eval (Ctr "A" `To` Ctr "B" `App` Ctr "C") empty # Assert.equal (Err $ PatternMismatch (Ctr "A") (Ctr "C"))
-    --   test "✅ (A -> B) A  ∴  B" do
-    --     eval (Ctr "A" `To` Ctr "B" `App` Ctr "A") empty # Assert.equal (Ok $ Ctr "B")
-    --   test "✅ (A -> C | B -> D) A  ∴  C" do
-    --     eval ((Ctr "A" `To` Ctr "C") `Or` (Ctr "B" `To` Ctr "D") `App` Ctr "A") empty # Assert.equal (Ok $ Ctr "C")
-    --   test "✅ (A -> C | B -> D) B  ∴  C" do
-    --     eval ((Ctr "A" `To` Ctr "C") `Or` (Ctr "B" `To` Ctr "D") `App` Ctr "B") empty # Assert.equal (Ok $ Ctr "D")
-    --   test "❌ (A -> C | B -> D) C  ∴  Pattern mismatch: B ≠ C" do
-    --     eval ((Ctr "A" `To` Ctr "C") `Or` (Ctr "B" `To` Ctr "D") `App` Ctr "C") empty # Assert.equal (Err $ PatternMismatch (Ctr "B") (Ctr "C"))
-    --   test "✅ (A, B) C  ∴  (A C, B C)" do
-    --     eval ((Ctr "A" `And` Ctr "B") `App` Ctr "C") empty # Assert.equal (Ok $ Ctr "A" `App` Ctr "C" `And` (Ctr "B" `App` Ctr "C"))
-    --   test "✅ A B C  ∴  A B C" do
-    --     eval (Ctr "A" `App` Ctr "B" `App` Ctr "C") empty # Assert.equal (Ok $ Ctr "A" `App` Ctr "B" `App` Ctr "C")
+    suite "☯︎ eval Add" do
+      test "✅ (+)  ∴  (+)" do
+        eval Add empty # Assert.equal (Ok $ Add `KV` (Var "a" `To` (Var "a" `To` Var "a")))
+      test "✅ (+) 1 2  ∴  3" do
+        eval (App (App Add (Int 1)) (Int 2)) empty # Assert.equal (Ok $ Int 3 `KV` IntT)
 
-    -- suite "☯︎ eval Add" do
-    --   test "✅ (+)  ∴  (+)" do
-    --     eval Add empty # Assert.equal (Ok Add)
-    --   test "✅ (+) 1 2  ∴  3" do
-    --     eval (App (App Add (Int 1)) (Int 2)) empty # Assert.equal (Ok $ Int 3)
+    suite "☯︎ eval Sub" do
+      test "✅ (-)  ∴  (-)" do
+        eval Sub empty # Assert.equal (Ok $ Sub `KV` (Var "a" `To` (Var "a" `To` Var "a")))
+      test "✅ (-) 2 1  ∴  1" do
+        eval (App (App Sub (Int 2)) (Int 1)) empty # Assert.equal (Ok $ Int 1 `KV` IntT)
 
-    -- suite "☯︎ eval Sub" do
-    --   test "✅ (-)  ∴  (-)" do
-    --     eval Sub empty # Assert.equal (Ok Sub)
-    --   test "✅ (-) 2 1  ∴  1" do
-    --     eval (App (App Sub (Int 2)) (Int 1)) empty # Assert.equal (Ok $ Int 1)
-
-    -- suite "☯︎ eval Mul" do
-    --   test "✅ (*)  ∴  (*)" do
-    --     eval Mul empty # Assert.equal (Ok Mul)
-    --   test "✅ (*) 2 3  ∴  6" do
-    --     eval (App (App Mul (Int 2)) (Int 3)) empty # Assert.equal (Ok $ Int 6)
+    suite "☯︎ eval Mul" do
+      test "✅ (*)  ∴  (*)" do
+        eval Mul empty # Assert.equal (Ok $ Mul `KV` (Var "a" `To` (Var "a" `To` Var "a")))
+      test "✅ (*) 2 3  ∴  6" do
+        eval (App (App Mul (Int 2)) (Int 3)) empty # Assert.equal (Ok $ Int 6 `KV` IntT)
 
     -- suite "☯︎ Factorial" do
     --   test "✅ f  Γ{f: factorial}  ∴  factorial @ f" do
