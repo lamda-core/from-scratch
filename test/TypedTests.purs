@@ -72,8 +72,10 @@ typedTests =
         unify (Var "x" `And` IntT) (Typ `And` Var "x") empty # Assert.equal (Err $ TypeMismatch IntT Typ)
       test "✅ (x, Int) == (Type, y)  ∴  (Type, Int)  Γ{x: Type, y: Int}" do
         unify (Var "x" `And` IntT) (Typ `And` Var "y") empty # Assert.equal (Ok $ (Typ `And` IntT) `KV` dict ["x" `KV` Typ, "y" `KV` IntT])
-      -- test "✅ x Int == Type y  Γ{x: x, y: y}  ∴  Type -> Int  Γ{x: Type, y: Int}" do
-      --   unify (Var "x" `App` IntT) (Typ `App` Var "y") (dict ["x" `KV` Var "x", "y" `KV` Var "y"]) # Assert.equal (Ok $ (Typ `App` IntT) `KV` dict ["x" `KV` Typ, "y" `KV` IntT])
+      test "❌ x Int == Type x  ∴  Type mismatch: Int ≠ Type" do
+        unify (Var "x" `App` IntT) (Typ `App` Var "x") empty # Assert.equal (Err $ TypeMismatch IntT Typ)
+      test "✅ x Int == Type y  ∴  Type Int  Γ{x: Type, y: Int}" do
+        unify (Var "x" `App` IntT) (Typ `App` Var "y") empty # Assert.equal (Ok $ (Typ `App` IntT) `KV` dict ["x" `KV` Typ, "y" `KV` IntT])
 
     suite "☯︎ eval" do
       test "✅ _  ∴  _ : _" do

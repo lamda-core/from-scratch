@@ -145,9 +145,10 @@ unify (And a1 b1) (And a2 b2) env = do
   KV a env1 <- unify a1 a2 env
   KV b env2 <- unify b1 b2 env1
   Ok ((a `And` b) `KV` env2)
-unify (App a1 b1) (App a2 b2) env =
-  -- TODO!
-  Err (UndefinedName ("Not implemented: unify (" <> show (App a1 b1) <> ") (" <> show (App a2 b2) <> ")"))
+unify (App a1 b1) (App a2 b2) env = do
+  KV a env1 <- unify a1 a2 env
+  KV b env2 <- unify b1 b2 env1
+  Ok ((a `App` b) `KV` env2)
 unify a b env | a == b = Ok (a `KV` env)
 unify a b _ = Err (TypeMismatch a b)
 
