@@ -16,10 +16,10 @@ to generate this file without the comments in this block.
   , "console"
   , "effect"
   , "free"
+  , "lists"
   , "maybe"
   , "prelude"
   , "psci-support"
-  , "strings"
   , "test-unit"
   ]
 , packages = ./packages.dhall

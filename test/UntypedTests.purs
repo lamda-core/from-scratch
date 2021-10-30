@@ -3,7 +3,7 @@ module Test.UntypedTests where
 import Prelude
 
 import Control.Monad.Free (Free)
-import Dict (Dict(..), KV(..), empty)
+import Dict (KV(..), dict, empty)
 import Result (Result(..))
 import Test.Unit (TestF, suite, test)
 import Test.Unit.Assert as Assert
@@ -18,7 +18,7 @@ untypedTests =
       test "✅ _ <- B  ∴  Γ{}" do
         match Any (Ctr "B") empty # Assert.equal (Ok empty)
       test "✅ 1 <- x  ∴  Γ{x: x}" do
-        match (Int 1) (Var "x") (Dict ["x" `KV` Var "x"]) # Assert.equal (Ok $ Dict ["x" `KV` Var "x"])
+        match (Int 1) (Var "x") (dict ["x" `KV` Var "x"]) # Assert.equal (Ok $ dict ["x" `KV` Var "x"])
       test "✅ 1 <- 1  ∴  Γ{}" do
         match (Int 1) (Int 1) empty # Assert.equal (Ok empty)
       test "❌ 1 <- 2  ∴  Pattern mismatch: 1 ≠ 2" do
@@ -28,17 +28,17 @@ untypedTests =
       test "❌ A <- B  ∴  Pattern mismatch: A ≠ B" do
         match (Ctr "A") (Ctr "B") empty # Assert.equal (Err $ PatternMismatch (Ctr "A") (Ctr "B"))
       test "✅ x <- B  Γ{x: A}  ∴  {x: B}" do
-        match (Var "x") (Ctr "B") (Dict ["x" `KV` Ctr "A"]) # Assert.equal (Ok $ Dict ["x" `KV` Ctr "B"])
+        match (Var "x") (Ctr "B") (dict ["x" `KV` Ctr "A"]) # Assert.equal (Ok $ dict ["x" `KV` Ctr "B"])
       test "✅ (x -> y) <- (A -> B)  ∴  Γ{x: A, y: B}" do
-        match (Var "x" `To` Var "y") (Ctr "A" `To` Ctr "B") empty # Assert.equal (Ok $ Dict ["x" `KV` Ctr "A", "y" `KV` Ctr "B"])
+        match (Var "x" `To` Var "y") (Ctr "A" `To` Ctr "B") empty # Assert.equal (Ok $ dict ["x" `KV` Ctr "A", "y" `KV` Ctr "B"])
       test "✅ x | y <- A  ∴  Γ{x: A}" do
-        match (Var "x" `Or` Var "y") (Ctr "A") empty # Assert.equal (Ok $ Dict ["x" `KV` Ctr "A"])
+        match (Var "x" `Or` Var "y") (Ctr "A") empty # Assert.equal (Ok $ dict ["x" `KV` Ctr "A"])
       test "✅ A | y <- B  ∴  Γ{y: B}" do
-        match (Ctr "A" `Or` Var "y") (Ctr "B") empty # Assert.equal (Ok $ Dict ["y" `KV` Ctr "B"])
+        match (Ctr "A" `Or` Var "y") (Ctr "B") empty # Assert.equal (Ok $ dict ["y" `KV` Ctr "B"])
       test "✅ (x, y) <- (A, B)  ∴  Γ{x: A, y: B}" do
-        match (Var "x" `And` Var "y") (Ctr "A" `And` Ctr "B") empty # Assert.equal (Ok $ Dict ["x" `KV` Ctr "A", "y" `KV` Ctr "B"])
+        match (Var "x" `And` Var "y") (Ctr "A" `And` Ctr "B") empty # Assert.equal (Ok $ dict ["x" `KV` Ctr "A", "y" `KV` Ctr "B"])
       test "✅ x y <- A B  ∴  Γ{x: A, y: B}" do
-        match (Var "x" `App` Var "y") (Ctr "A" `App` Ctr "B") empty # Assert.equal (Ok $ Dict ["x" `KV` Ctr "A", "y" `KV` Ctr "B"])
+        match (Var "x" `App` Var "y") (Ctr "A" `App` Ctr "B") empty # Assert.equal (Ok $ dict ["x" `KV` Ctr "A", "y" `KV` Ctr "B"])
 
     suite "☯︎ eval Any" do
       test "❌ _  ∴  Not a value: _" do
@@ -56,11 +56,11 @@ untypedTests =
       test "❌ x  ∴  Undefined variable: x" do
         eval (Var "x") empty # Assert.equal (Err $ UndefinedVar "x")
       test "✅ x  Γ{x: x}  ∴  x" do
-        eval (Var "x") (Dict ["x" `KV` Var "x"]) # Assert.equal (Ok $ Var "x")
+        eval (Var "x") (dict ["x" `KV` Var "x"]) # Assert.equal (Ok $ Var "x")
       test "✅ x  Γ{x: x -> x}  ∴  x -> x" do
-        eval (Var "x") (Dict ["x" `KV` (Var "x" `To` Var "x")]) # Assert.equal (Ok $ Var "x" `To` Var "x")
+        eval (Var "x") (dict ["x" `KV` (Var "x" `To` Var "x")]) # Assert.equal (Ok $ Var "x" `To` Var "x")
       test "✅ x  Γ{x: y -> x y}  ∴  (y -> x y) @ x" do
-        eval (Var "x") (Dict ["x" `KV` (Var "y" `To` (Var "x" `App` Var "y"))]) # Assert.equal (Ok $ (Var "y" `To` (Var "x" `App` Var "y")) `As` "x")
+        eval (Var "x") (dict ["x" `KV` (Var "y" `To` (Var "x" `App` Var "y"))]) # Assert.equal (Ok $ (Var "y" `To` (Var "x" `App` Var "y")) `As` "x")
 
     suite "☯︎ eval As" do
       test "✅ 1 @ x  ∴  1" do
@@ -112,9 +112,9 @@ untypedTests =
       test "✅ A B  ∴  A B" do
         eval (Ctr "A" `App` Ctr "B") empty # Assert.equal (Ok $ Ctr "A" `App` Ctr "B")
       test "✅ x B  Γ{x: x}  ∴  x B" do
-        eval (Var "x" `App` Ctr "B") (Dict ["x" `KV` Var "x"]) # Assert.equal (Ok $ Var "x" `App` Ctr "B")
+        eval (Var "x" `App` Ctr "B") (dict ["x" `KV` Var "x"]) # Assert.equal (Ok $ Var "x" `App` Ctr "B")
       test "✅ (A -> B) x  Γ{x: x}  ∴  (A -> A) x" do
-        eval (Ctr "A" `To` Ctr "B" `App` Var "x") (Dict ["x" `KV` Var "x"]) # Assert.equal (Ok $ (Ctr "A" `To` Ctr "B") `App` Var "x")
+        eval (Ctr "A" `To` Ctr "B" `App` Var "x") (dict ["x" `KV` Var "x"]) # Assert.equal (Ok $ (Ctr "A" `To` Ctr "B") `App` Var "x")
       test "❌ (A -> B) C  ∴  Pattern mismatch: A ≠ C" do
         eval (Ctr "A" `To` Ctr "B" `App` Ctr "C") empty # Assert.equal (Err $ PatternMismatch (Ctr "A") (Ctr "C"))
       test "✅ (A -> B) A  ∴  B" do
@@ -150,31 +150,33 @@ untypedTests =
 
     suite "☯︎ Factorial" do
       test "✅ f  Γ{f: factorial}  ∴  factorial @ f" do
-        eval (Var "f") (Dict [KV "f" factorial]) # Assert.equal (Ok $ factorial `As` "f")
+        eval (Var "f") (dict [KV "f" factorial]) # Assert.equal (Ok $ factorial `As` "f")
       test "✅ f 0  Γ{f: factorial}  ∴  (factorial @ f) 1" do
-        eval (Var "f" `App` Int 0) (Dict [KV "f" factorial]) # Assert.equal (Ok $ Int 1)
+        eval (Var "f" `App` Int 0) (dict [KV "f" factorial]) # Assert.equal (Ok $ Int 1)
       test "✅ f 1  Γ{f: factorial}  ∴  1" do
-        eval (Var "f" `App` Int 1) (Dict [KV "f" factorial]) # Assert.equal (Ok $ Int 1)
+        eval (Var "f" `App` Int 1) (dict [KV "f" factorial]) # Assert.equal (Ok $ Int 1)
       test "✅ f 2  Γ{f: factorial}  ∴  2" do
-        eval (Var "f" `App` Int 2) (Dict [KV "f" factorial]) # Assert.equal (Ok $ Int 2)
+        eval (Var "f" `App` Int 2) (dict [KV "f" factorial]) # Assert.equal (Ok $ Int 2)
       test "✅ f 5  Γ{f: factorial}  ∴  120" do
-        eval (Var "f" `App` Int 5) (Dict [KV "f" factorial]) # Assert.equal (Ok $ Int 120)
+        eval (Var "f" `App` Int 5) (dict [KV "f" factorial]) # Assert.equal (Ok $ Int 120)
 
     suite "☯︎ Ackermann" do
       test "✅ a  Γ{a: ackermann}  ∴  ackermann @ a" do
-        eval (Var "a") (Dict [KV "a" ackermann]) # Assert.equal (Ok $ ackermann `As` "a")
+        eval (Var "a") (dict [KV "a" ackermann]) # Assert.equal (Ok $ ackermann `As` "a")
       test "✅ a 0  Γ{a: ackermann}  ∴  n -> n + 1" do
-        eval (App (Var "a") (Int 0)) (Dict [KV "a" ackermann]) # Assert.equal (Ok $ Var "n" `To` (Var "n" `add2` Int 1))
+        eval (App (Var "a") (Int 0)) (dict [KV "a" ackermann]) # Assert.equal (Ok $ Var "n" `To` (Var "n" `add2` Int 1))
       test "✅ a 0 0  Γ{a: ackermann}  ∴  1" do
-        eval (app2 (Var "a") (Int 0) (Int 0)) (Dict [KV "a" ackermann]) # Assert.equal (Ok $ Int 1)
+        eval (app2 (Var "a") (Int 0) (Int 0)) (dict [KV "a" ackermann]) # Assert.equal (Ok $ Int 1)
       test "✅ a 0 0  Γ{a: ackermann}  ∴  1" do
-        eval (app2 (Var "a") (Int 0) (Int 0)) (Dict [KV "a" ackermann]) # Assert.equal (Ok $ Int 1)
+        eval (app2 (Var "a") (Int 0) (Int 0)) (dict [KV "a" ackermann]) # Assert.equal (Ok $ Int 1)
       test "✅ a 1 1  Γ{a: ackermann}  ∴  3" do
-        eval (app2 (Var "a") (Int 1) (Int 1)) (Dict [KV "a" ackermann]) # Assert.equal (Ok $ Int 3)
+        eval (app2 (Var "a") (Int 1) (Int 1)) (dict [KV "a" ackermann]) # Assert.equal (Ok $ Int 3)
       test "✅ a 2 2  Γ{a: ackermann}  ∴  7" do
-        eval (app2 (Var "a") (Int 2) (Int 2)) (Dict [KV "a" ackermann]) # Assert.equal (Ok $ Int 7)
+        eval (app2 (Var "a") (Int 2) (Int 2)) (dict [KV "a" ackermann]) # Assert.equal (Ok $ Int 7)
       test "✅ a 3 2  Γ{a: ackermann}  ∴  29" do
-        eval (app2 (Var "a") (Int 3) (Int 2)) (Dict [KV "a" ackermann]) # Assert.equal (Ok $ Int 29)
+        eval (app2 (Var "a") (Int 3) (Int 2)) (dict [KV "a" ackermann]) # Assert.equal (Ok $ Int 29)
+      -- test "✅ a 3 3  Γ{a: ackermann}  ∴  61" do
+      --   eval (app2 (Var "a") (Int 3) (Int 3)) (dict [KV "a" ackermann]) # Assert.equal (Ok $ Int 61)
 
     where
       -- f 0 = 1
