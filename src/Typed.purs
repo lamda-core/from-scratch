@@ -188,29 +188,22 @@ eval (And e1 e2) env = do
   KV e1' t1 <- eval e1 env
   KV e2' t2 <- eval e2 env
   Ok ((e1' `And` e2') `KV` (t1 `And` t2))
-eval (App (To p e) arg) env = do
-  KV arg' _ <- eval arg env
-  case unify p arg' env of
-    Ok (KV _ env2) -> eval e env2
-    Err (TypeMismatch p' e') -> Err (PatternMismatch p' e')
-    Err err -> Err err
-eval (App (Or p1 p2) arg) env = do
-  _ <- eval (Or p1 p2) env
-  KV arg' _ <- eval arg env
-  case eval (p1 `App` arg') env of
-    Ok result -> Ok result
-    Err (PatternMismatch _ _) -> eval (p2 `App` arg') env
-    Err err -> Err err
 eval (App e1 e2) env = do
   KV e1' ab <- eval e1 env
   KV e2' a <- eval e2 env
-  KV ab' env' <- unify ab (a `To` Any) env
+  KV ab' _ <- unify ab (a `To` Any) env
   case ab' of
     To a b -> case e1' of
       -- | As  Expr String -- e @ x
       -- | Ann Expr Expr   -- e : t
-      To p e -> eval ((p `To` e) `App` e2) env
-      Or p1 p2 -> eval ((p1 `Or` p2) `App` e2) env
+      To p e -> case unify p e2 env of
+        Ok (KV _ env2) -> eval e env2
+        Err (TypeMismatch p' e') -> Err (PatternMismatch p' e')
+        Err err -> Err err
+      Or p1 p2 -> case eval (p1 `App` e2) env of
+        Ok result -> Ok result
+        Err (PatternMismatch _ _) -> eval (p2 `App` e2) env
+        Err err -> Err err
       -- | And Expr Expr   -- (e1, e2)
       -- | App Expr Expr   -- e1 e2
       -- | Add             -- (+)

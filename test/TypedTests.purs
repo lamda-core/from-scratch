@@ -129,24 +129,18 @@ typedTests =
       test "✅ (1, Type)  ∴  (1, Type) : (Int, Type)" do
         eval (Int 1 `And` Typ) empty # Assert.equal (Ok $ (Int 1 `And` Typ) `KV` (IntT `And` Typ))
 
+      test "❌ 1 Type  ∴  Type mismatch: Int ≠ Type -> _" do
+        eval (Int 1 `App` Typ) empty # Assert.equal (Err $ TypeMismatch IntT (Typ `To` Any))
       test "❌ (_ -> 1) x  ∴  Undefined name: x" do
         eval ((Any `To` Int 1) `App` Var "x") empty # Assert.equal (Err $ UndefinedName "x")
       test "✅ (1 -> _) 2  ∴  Pattern mismatch: 1 ≠ 2" do
         eval ((Int 1 `To` Any) `App` Int 2) empty # Assert.equal (Err $ PatternMismatch (Int 1) (Int 2))
       test "✅ (x -> x) 1  ∴  1 : Int" do
         eval ((Var "x" `To` Var "x") `App` Int 1) empty # Assert.equal (Ok $ Int 1 `KV` IntT)
-
       test "✅ (1 -> 2 | x -> x) 1  ∴  2 : Int" do
         eval (((Int 1 `To` Int 2) `Or` (Var "x" `To` Var "x")) `App` Int 1) empty # Assert.equal (Ok $ Int 2 `KV` IntT)
       test "✅ (1 -> 2 | x -> x) 3  ∴  3 : Int" do
         eval (((Int 1 `To` Int 2) `Or` (Var "x" `To` Var "x")) `App` Int 3) empty # Assert.equal (Ok $ Int 3 `KV` IntT)
-
-      test "❌ 1 Type  ∴  Type mismatch: Int ≠ Type -> _" do
-        eval (Int 1 `App` Typ) empty # Assert.equal (Err $ TypeMismatch IntT (Typ `To` Any))
-      test "✅ f 1  Γ{f: x -> x}  ∴  1 : Int" do
-        eval (Var "f" `App` Int 1) (dict ["f" `KV` (Var "x" `To` Var "x")]) # Assert.equal (Ok $ Int 1 `KV` IntT)
-      test "✅ f 3  Γ{f: 1 -> 2 | x -> x}  ∴  3 : Int" do
-        eval (Var "f" `App` Int 3) (dict ["f" `KV` ((Int 1 `To` Int 2) `Or` (Var "x" `To` Var "x"))]) # Assert.equal (Ok $ Int 3 `KV` IntT)
 
       -- test "✅ (A -> B) x  Γ{x: x}  ∴  (A -> A) x" do
       --   eval (Ctr "A" `To` Ctr "B" `App` Var "x") (dict ["x" `KV` Var "x"]) # Assert.equal (Ok $ (Ctr "A" `To` Ctr "B") `App` Var "x")
