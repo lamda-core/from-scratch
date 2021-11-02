@@ -15,7 +15,7 @@ data Expr
   | Int Int         -- 42
   | Ctr String      -- C
   | Var String      -- x
-  | As  Expr String -- e @ x
+  | Lam Expr        -- λp
   | Ann Expr Expr   -- e : t
   | To  Expr Expr   -- p -> e
   | Or  Expr Expr   -- e1 | e2
@@ -92,7 +92,6 @@ mul2 = app2 Mul
 
 occurs :: String -> Expr -> Boolean
 occurs x (Var x') | x == x' = true
-occurs x (As e y) | x /= y  = x `occurs` e
 occurs x (Ann e t) = x `occurs` e || x `occurs` t
 occurs x (To e1 e2) = not (x `occurs` e1) && x `occurs` e2
 occurs x (Or e1 e2) = x `occurs` e1 || x `occurs` e2
@@ -101,53 +100,88 @@ occurs x (App e1 e2) = x `occurs` e1 || x `occurs` e2
 occurs _ _ = false
 
 unify :: Expr -> Expr -> Env -> Result Error (KV Expr Env)
-unify Any Any env = Ok (Any `KV` env)
-unify Any (Var x) env = case get x env of
-  Just (Var x') | x == x' -> Ok (Var x `KV` env)
-  Just e -> unify Any e env
-  Nothing -> Ok (Var x `KV` (set x (Var x) env))
-unify Any b env = Ok (b `KV` env)
-unify a Any env = unify Any a env
-unify (Var x) b env = case get x env of
-  Just (Var x') | x == x' -> unify Any b (set x b env)
-  Just a -> unify a b env
-  Nothing -> unify Any b (set x b env)
-unify a (Var x) env = case get x env of
-  Just (Var x') | x == x' -> unify Any a (set x a env)
-  Just b -> unify a b env
-  Nothing -> unify Any a (set x a env)
-unify (As a x) b env = unify a b (set x b env)
-unify a (As b x) env = unify a b (set x a env)
 unify (Ann a t) b env = do
-  KV b' bt <- eval b env
-  KV t' env' <- unify bt t env
-  unify a (Ann b' t') env'
+  KV a' t' <- eval (Ann a t) env
+  KV b' _ <- eval (Ann b t') env
+  unify a' b' env
 unify a (Ann b t) env = do
-  KV a' at <- eval a env
-  KV t' env' <- unify at t env
-  unify b (Ann a' t') env'
-unify (To a1 b1) (To a2 b2) env = do
-  KV a env1 <- unify a1 a2 env
-  KV b env2 <- unify b1 b2 env1
-  Ok ((a `To` b) `KV` env2)
-unify (Or a b) t env = case unify a t env of
-  Ok result -> Ok result
-  Err (TypeMismatch _ _) -> unify b t env
-  Err err -> Err err
-unify t (Or a b) env = case unify t a env of
-  Ok result -> Ok result
-  Err (TypeMismatch _ _) -> unify t b env
-  Err err -> Err err
-unify (And a1 b1) (And a2 b2) env = do
-  KV a env1 <- unify a1 a2 env
-  KV b env2 <- unify b1 b2 env1
-  Ok ((a `And` b) `KV` env2)
-unify (App a1 b1) (App a2 b2) env = do
-  KV a env1 <- unify a1 a2 env
-  KV b env2 <- unify b1 b2 env1
-  Ok ((a `App` b) `KV` env2)
-unify a b env | a == b = Ok (a `KV` env)
-unify a b _ = Err (TypeMismatch a b)
+  KV b' t' <- eval (Ann b t) env
+  KV a' _ <- eval (Ann a t') env
+  unify a' b' env
+unify expr1 expr2 env = do
+  KV a _ <- eval expr1 env
+  KV b _ <- eval expr2 env
+  case KV a b of
+    KV Any _ -> Ok (b `KV` env)
+    KV _ Any -> Ok (a `KV` env)
+    KV (Var x) _ -> Ok (b `KV` set x b env)
+    KV _ (Var x) -> Ok (a `KV` set x a env)
+    KV (Lam (Var x)) _ -> unify (Var x) b (set x (Var x) env)
+    KV _ (Lam (Var x)) -> unify a (Var x) (set x (Var x) env)
+    KV (To a1 b1) (To a2 b2) -> do
+      KV a' env1 <- unify a1 a2 env
+      KV b' env2 <- unify b1 b2 env1
+      Ok ((a' `To` b') `KV` env2)
+    KV (Or e1 e2) _ -> case unify e1 b env of
+      Ok result -> Ok result
+      Err (TypeMismatch _ _) -> unify e2 b env
+      Err err -> Err err
+    KV _ (Or e1 e2) -> case unify a e1 env of
+      Ok result -> Ok result
+      Err (TypeMismatch _ _) -> unify a e2 env
+      Err err -> Err err
+    KV (And a1 b1) (And a2 b2) -> do
+      KV a' env1 <- unify a1 a2 env
+      KV b' env2 <- unify b1 b2 env1
+      Ok ((a' `And` b') `KV` env2)
+    KV (App a1 b1) (App a2 b2) -> do
+      KV a' env1 <- unify a1 a2 env
+      KV b' env2 <- unify b1 b2 env1
+      Ok ((a' `App` b') `KV` env2)
+    _ | a == b -> Ok (a `KV` env)
+    _ -> Err (TypeMismatch a b)
+
+-- TODO: add tests
+unifyT :: Expr -> Expr -> Env -> Result Error (KV Expr Env)
+unifyT t1 t2 env = do
+  KV t env' <- unify (Lam t1) (Lam t2) env
+  KV t' _ <- evalT t env'
+  Ok (t' `KV` env')
+
+-- TODO: add tests
+evalT :: Expr -> Env -> Result Error (KV Expr Expr)
+evalT e env = do
+  KV t k <- eval (Lam e) env
+  case t of
+    Lam t' -> Ok (t' `KV` k)
+    _ -> Ok (t `KV` k)
+
+-- TODO: add tests
+evalP :: Expr -> Env -> Result Error (KV Expr Env)
+evalP (Lam (Var x)) env =
+  Ok (Lam (Var x) `KV` (set x (Var x) env))
+evalP (Lam (Ann p t)) env = do
+  KV p' env1 <- evalP (Lam p) env
+  KV _ env2 <- evalP (Lam t) env1
+  Ok (p' `KV` env2)
+evalP (Lam (To a b)) env = do
+  KV a' env1 <- evalP (Lam a) env
+  KV b' env2 <- evalP (Lam b) env1
+  Ok ((a' `To` b') `KV` env2)
+evalP (Lam (Or a b)) env = do
+  KV a' env1 <- evalP (Lam a) env
+  KV b' env2 <- evalP (Lam b) env1
+  Ok ((a' `Or` b') `KV` env2)
+evalP (Lam (And a b)) env = do
+  KV a' env1 <- evalP (Lam a) env
+  KV b' env2 <- evalP (Lam b) env1
+  Ok ((a' `And` b') `KV` env2)
+evalP (Lam (App a b)) env = do
+  KV a' env1 <- evalP (Lam a) env
+  KV b' env2 <- evalP (Lam b) env1
+  Ok ((a' `App` b') `KV` env2)
+evalP (Lam p) env = evalP p env
+evalP p env = Ok (p `KV` env)
 
 eval :: Expr -> Env -> Result Error (KV Expr Expr)
 eval Any _ = Ok (Any `KV` Any)
@@ -165,28 +199,29 @@ eval (Var x) env = case get x env of
     Ok (Var x `KV` t')
   Just e -> do
     KV e' t <- eval e (set x (Var x) env)
-    -- TODO: support recursion
-    -- if x `occurs` e'
-    --   then Ok ((e' `As` x) `KV` t)
-    --   else Ok (e' `KV` t)
-    Ok (e' `KV` t)
+    if x `occurs` e'
+      then Ok (Var x `KV` t)
+      else Ok (e' `KV` t)
   Nothing -> Err (UndefinedName x)
-eval (As e x) env = eval (Var x) (set x e env)
+eval (Lam e) env = do
+  KV p env' <- evalP (Lam e) env
+  KV _ t <- eval e env'
+  Ok (p `KV` t)
 eval (Ann e t) env = do
-  KV e' et <- eval e env
-  KV t' _ <- unify et t env
+  KV e' te <- eval e env
+  KV t' _ <- unifyT te t env
   Ok (e' `KV` t')
 eval (To p e) env = do
-  KV _ env' <- unify p p env
-  KV p' pt <- eval p env'
-  KV e' et <- eval e env'
-  Ok ((p' `To` e') `KV` (pt `To` et))
+  KV _ env' <- evalP p env
+  KV p' tp <- eval p env'
+  KV e' te <- eval e env'
+  Ok ((p' `To` e') `KV` (tp `To` te))
 eval (Or e1 e2) env = do
   -- TODO: check for missing cases
   -- TODO: check for redundant cases
   KV e1' t1 <- eval e1 env
   KV e2' t2 <- eval e2 env
-  KV t _ <- unify t1 t2 env
+  KV t _ <- unifyT t1 t2 env
   Ok ((e1' `Or` e2') `KV` t)
 eval (And e1 e2) env = do
   KV e1' t1 <- eval e1 env
@@ -196,23 +231,33 @@ eval (App (And p1 p2) e2) env = do
   KV p1' t1 <- eval (p1 `App` e2) env
   KV p2' t2 <- eval (p2 `App` e2) env
   Ok ((p1' `And` p2') `KV` (t1 `And` t2))
+eval (App (Or p1 p2) e2) env = case eval (p1 `App` e2) env of
+  -- Ok (To Any e) -> Ok (Any `To` e)
+  -- Ok (To (Var x) e) -> Ok (Var x `To` e)
+  -- Ok (To p e) -> Ok ((p `To` e) `Or` (p2 `App` e2))
+  Ok result -> Ok result
+  Err (PatternMismatch _ _) -> eval (p2 `App` e2) env
+  Err err -> Err err
 eval (App e1 e2) env = do
   KV e1' ab <- eval e1 env
   KV e2' a <- eval e2 env
-  KV ab' _ <- unify ab (a `To` Any) env
+  KV ab' _ <- unifyT ab (a `To` Any) env
   case ab' of
     To _ t -> do
       case KV e1' e2' of
-        -- TODO: support recursion, but maybe can be encoded in Var instead of As
-        -- | As  Expr String -- e @ x
-        KV (To p e) _ -> case unify p e2 env of
-          Ok (KV _ env') -> eval e env'
-          Err (TypeMismatch p' e') -> Err (PatternMismatch p' e')
-          Err err -> Err err
-        KV (Or p1 p2) _ -> case eval (p1 `App` e2) env of
-          Ok result -> Ok result
-          Err (PatternMismatch _ _) -> eval (p2 `App` e2) env
-          Err err -> Err err
+        KV _ (Var _) -> Ok ((e1' `App` e2') `KV` t) -- TODO: add test!
+        KV _ (App _ _) -> Ok ((e1' `App` e2') `KV` t) -- TODO: add test!
+        KV (Var x) _ -> case get x env of
+          Just (Var _) -> Ok ((e1' `App` e2') `KV` t)
+          Just p -> eval (p `App` e2') env
+          Nothing -> Err (UndefinedName x) -- unreachable
+        KV (To p e) _ -> do
+          KV p' env1 <- evalP p env
+          case unify p' e2' env1 of
+            Ok (KV _ env2) -> eval e env2
+            Err (TypeMismatch _ _) -> Err (PatternMismatch p e2)
+            Err err -> Err err
+        KV (Or p1 p2) _ -> eval ((p1 `Or` p2) `App` e2') env -- TODO: add test!
         KV (App Add (Int k1)) (Int k2) -> eval (Int (k1 + k2)) empty
         KV (App Sub (Int k1)) (Int k2) -> eval (Int (k1 - k2)) empty
         KV (App Mul (Int k1)) (Int k2) -> eval (Int (k1 * k2)) empty

@@ -11,5 +11,5 @@ import Test.UntypedTests (untypedTests)
 main :: Effect Unit
 main = runTest do
     dictTests
-    untypedTests
+    -- untypedTests
     typedTests
