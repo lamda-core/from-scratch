@@ -191,12 +191,7 @@ eval (Int k) _ = Ok (Int k `KV` IntT)
 eval (Ctr x) env = eval (Var x) env
 eval (Var x) env = case get x env of
   Just (Var x') | x == x' -> Ok (Var x `KV` Var x)
-  Just (Ann (Ctr c) t) -> do
-    KV t' _ <- eval t env
-    Ok (Ctr c `KV` t')
-  Just (Ann (Var x') t) | x == x' -> do
-    KV t' _ <- eval t env
-    Ok (Var x `KV` t')
+  Just (Ann e t) -> Ok (e `KV` t)
   Just e -> do
     KV e' t <- eval e (set x (Var x) env)
     if x `occurs` e'
@@ -234,10 +229,10 @@ eval (App (Or p1 p2) e2) env = case eval (p1 `App` e2) env of
   Ok result -> Ok result
   Err (PatternMismatch _ _) -> eval (p2 `App` e2) env
   Err err -> Err err
-eval (App (And p1 p2) e2) env = do
-  KV p1' t1 <- eval (p1 `App` e2) env
-  KV p2' t2 <- eval (p2 `App` e2) env
-  Ok ((p1' `And` p2') `KV` (t1 `And` t2))
+-- eval (App (And p1 p2) e2) env = do
+--   KV p1' t1 <- eval (p1 `App` e2) env
+--   KV p2' t2 <- eval (p2 `App` e2) env
+--   Ok ((p1' `And` p2') `KV` (t1 `And` t2))
 eval (App e1 e2) env = do
   KV e1' ab <- eval e1 env
   KV e2' a <- eval e2 env

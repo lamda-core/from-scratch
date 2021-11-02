@@ -91,8 +91,6 @@ typedTests =
         eval (Var "x") empty # Assert.equal (Err $ UndefinedName "x")
       test "✅ x  Γ{x: x}  ∴  x : x" do
         eval (Var "x") (dict ["x" `KV` Var "x"]) # Assert.equal (Ok $ Var "x" `KV` Var "x")
-      test "❌ x  Γ{x: x : y}  ∴  Undefined name: y" do
-        eval (Var "x") (dict ["x" `KV` (Var "x" `Ann` Var "y")]) # Assert.equal (Err $ UndefinedName "y")
       test "✅ x  Γ{x: x : Int}  ∴  x : Int" do
         eval (Var "x") (dict ["x" `KV` (Var "x" `Ann` IntT)]) # Assert.equal (Ok $ Var "x" `KV` IntT)
       -- test "✅ x  Γ{x: x -> x}  ∴  x -> x" do
@@ -157,8 +155,6 @@ typedTests =
         eval (((Int 1 `To` Int 2) `Or` (Lam (Var "x") `To` Var "x")) `App` Int 1) empty # Assert.equal (Ok $ Int 2 `KV` IntT)
       test "✅ (1 -> 2 | λx -> x) 3  ∴  3 : Int" do
         eval (((Int 1 `To` Int 2) `Or` (Lam (Var "x") `To` Var "x")) `App` Int 3) empty # Assert.equal (Ok $ Int 3 `KV` IntT)
-      test "✅ (_ -> 1, λx -> x) 2  ∴  (1, 2) : (Int, Int)" do
-        eval (((Any `To` Int 1) `And` (Lam (Var "x") `To` Var "x")) `App` Int 2) empty # Assert.equal (Ok $ (Int 1 `And` Int 2) `KV` (IntT `And` IntT))
 
     suite "☯︎ eval Add" do
       test "✅ (+)  ∴  (+)" do
