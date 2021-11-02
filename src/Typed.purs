@@ -227,17 +227,17 @@ eval (And e1 e2) env = do
   KV e1' t1 <- eval e1 env
   KV e2' t2 <- eval e2 env
   Ok ((e1' `And` e2') `KV` (t1 `And` t2))
+eval (App (Or p1 p2) e2) env = case eval (p1 `App` e2) env of
+  -- Ok (KV (To Any e) _) -> Ok ((Any `To` e) `KV` Any)
+  -- Ok (KV (To (Var x) e) _) -> Ok ((Var x `To` e) `KV` Any)
+  Ok (KV (To p e) _) -> Ok (((p `To` e) `Or` (p2 `App` e2)) `KV` Any)
+  Ok result -> Ok result
+  Err (PatternMismatch _ _) -> eval (p2 `App` e2) env
+  Err err -> Err err
 eval (App (And p1 p2) e2) env = do
   KV p1' t1 <- eval (p1 `App` e2) env
   KV p2' t2 <- eval (p2 `App` e2) env
   Ok ((p1' `And` p2') `KV` (t1 `And` t2))
-eval (App (Or p1 p2) e2) env = case eval (p1 `App` e2) env of
-  -- Ok (To Any e) -> Ok (Any `To` e)
-  -- Ok (To (Var x) e) -> Ok (Var x `To` e)
-  -- Ok (To p e) -> Ok ((p `To` e) `Or` (p2 `App` e2))
-  Ok result -> Ok result
-  Err (PatternMismatch _ _) -> eval (p2 `App` e2) env
-  Err err -> Err err
 eval (App e1 e2) env = do
   KV e1' ab <- eval e1 env
   KV e2' a <- eval e2 env
