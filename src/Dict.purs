@@ -23,6 +23,10 @@ dict = foldl (\kvs (KV k v) -> set k v kvs) empty
 empty :: forall k v. Eq k => Dict k v
 empty = Nil
 
+length :: forall k v. Eq k => Dict k v -> Int
+length Nil = 0
+length (_ : kvs) = 1 + length kvs
+
 has :: forall k v. Eq k => k -> Dict k v -> Boolean
 has _ Nil = false
 has k (KV k' _ : _) | k == k' = true
@@ -33,6 +37,11 @@ get _ Nil = Nothing
 get k (KV k' v : _) | k == k' = Just v
 get k (_ : kvs) = get k kvs
 
+getOr :: forall k v. Eq k => k -> Dict k v -> v -> v
+getOr _ Nil default = default
+getOr k (KV k' v : _) _ | k == k' = v
+getOr k (_ : kvs) default = getOr k kvs default
+
 set :: forall k v. Eq k => k -> v -> Dict k v -> Dict k v
 set k v Nil = KV k v : Nil
 set k v (KV k' _ : kvs) | k == k' = KV k v : kvs
@@ -42,3 +51,7 @@ union :: forall k v. Eq k => Dict k v -> Dict k v -> Dict k v
 union Nil kvs2 = kvs2
 union (KV k _ : kvs1) kvs2 | has k kvs2 = kvs1 `union` kvs2
 union (KV k v : kvs1) kvs2 = KV k v : kvs1 `union` kvs2
+
+dictMap :: forall k a b. Eq k => (k -> a -> b) -> Dict k a -> Dict k b
+dictMap _ Nil = Nil
+dictMap f (KV k v : kvs) = KV k (f k v) : dictMap f kvs
