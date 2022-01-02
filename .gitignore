@@ -1,9 +1,7 @@
 # VS Code
 /.vscode/
 
-# PureScript
-/.psa*
-/.psc*
-/.purs*
-/.spago/
-/output/
+# Haskell
+.stack-work/
+*.cabal
+*~
