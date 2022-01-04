@@ -16,37 +16,34 @@ main = hspec $ do
           ]
 
     it "☯ occurs" $ do
+      "x" `occurs` TTup `shouldBe` False
       "x" `occurs` TInt `shouldBe` False
       "x" `occurs` TVar "x" `shouldBe` True
       "x" `occurs` TVar "y" `shouldBe` False
       "x" `occurs` TTyp ["x"] `shouldBe` False
+      "x" `occurs` TFun (TVar "y") (TVar "y") `shouldBe` False
       "x" `occurs` TFun (TVar "x") (TVar "y") `shouldBe` True
       "x" `occurs` TFun (TVar "y") (TVar "x") `shouldBe` True
-      "x" `occurs` TTup `shouldBe` False
+      "x" `occurs` TRec [] `shouldBe` False
+      "x" `occurs` TRec [("x", TVar "y")] `shouldBe` False
       "x" `occurs` TRec [("y", TVar "x")] `shouldBe` True
+      "x" `occurs` TAnn "y" (TVar "y") `shouldBe` False
       "x" `occurs` TAnn "x" (TVar "y") `shouldBe` True
       "x" `occurs` TAnn "y" (TVar "x") `shouldBe` True
-      "x" `occurs` TOr (TVar "x") (TVar "y") `shouldBe` True
-      "x" `occurs` TOr (TVar "y") (TVar "x") `shouldBe` True
+      "x" `occurs` TApp (TVar "y") (TVar "y") `shouldBe` False
+      "x" `occurs` TApp (TVar "x") (TVar "y") `shouldBe` True
+      "x" `occurs` TApp (TVar "y") (TVar "x") `shouldBe` True
 
     it "☯ bind" $ do
+      bind "x" (TVar "y") TTup `shouldBe` TTup
       bind "x" (TVar "y") TInt `shouldBe` TInt
+      bind "x" (TVar "y") (TTyp ["x"]) `shouldBe` TTyp ["x"]
       bind "x" (TVar "y") (TVar "x") `shouldBe` TVar "y"
       bind "x" (TVar "y") (TVar "z") `shouldBe` TVar "z"
-      bind "x" (TVar "y") (TTyp ["x"]) `shouldBe` TTyp ["x"]
       bind "x" (TVar "y") (TFun (TVar "x") (TVar "x")) `shouldBe` TFun (TVar "y") (TVar "y")
-
-      --   bind "x" (Var "y") Tup `shouldBe` Tup
       bind "x" (TVar "y") (TRec [("x", TVar "x")]) `shouldBe` TRec [("x", TVar "y")]
-
-      --   bind "x" (Var "y") (Ann (Var "x") (Var "x")) `shouldBe` Ann (Var "y") (Var "y")
-      bind "x" (TVar "y") (TOr (TVar "x") (TVar "x")) `shouldBe` TOr (TVar "y") (TVar "y")
-
-    --   bind "x" (Var "y") (Lam (PVar "x") (Var "x")) `shouldBe` Lam (PVar "x") (Var "x")
-    --   -- TODO: make unique names for shadowing while substituting
-    --   -- bind "x" (Var "y") (Lam (PVar "y") (Var "x" `App` Var "y")) `shouldBe` Lam (PVar "y'") (Var "y" `App` Var "y'")
-    --   bind "x" (Var "y") (Lam (PVar "z") (Var "x")) `shouldBe` Lam (PVar "z") (Var "y")
-    --   bind "x" (Var "y") (App (Var "x") (Var "x")) `shouldBe` App (Var "y") (Var "y")
+      bind "x" (TVar "y") (TAnn "x" (TVar "z")) `shouldBe` TVar "y"
+      bind "x" (TVar "y") (TApp (TVar "x") (TVar "x")) `shouldBe` TApp (TVar "y") (TVar "y")
 
     it "☯ unify" $ do
       let unify' a b = fmap (\s -> s (TVar "x")) (unify a b)
@@ -76,28 +73,24 @@ main = hspec $ do
 
     it "☯ check" $ do
       let check' expr env = fmap fst (check expr env)
+      check' Tup Map.empty `shouldBe` Right TTup
       check' (Int 1) Map.empty `shouldBe` Right TInt
       check' (Var "x") Map.empty `shouldBe` Left (UndefinedName "x")
       check' (Var "x") (Map.singleton "x" TInt) `shouldBe` Right TInt
       check' (Var "x") (Map.singleton "x" (TVar "y")) `shouldBe` Right (TVar "y")
-      check' (Lam PAny (Int 1)) Map.empty `shouldBe` Right (TFun (TVar "a") TInt)
+      check' (Ann Tup TInt) Map.empty `shouldBe` Left (TypeMismatch TInt TTup)
+      check' (Ann Tup TTup) Map.empty `shouldBe` Right TTup
       check' (Lam PAny (Var "x")) Map.empty `shouldBe` Left (UndefinedName "x")
-      check' (Lam PAny (Var "x")) (Map.singleton "x" (TVar "a")) `shouldBe` Right (TFun (TVar "b") (TVar "a"))
-      check' (Lam (PInt 1) (Var "x")) (Map.singleton "x" (TVar "a")) `shouldBe` Right (TFun TInt (TVar "a"))
-      -- check' (Lam (PVar "x") (Var "x")) Map.empty `shouldBe` Right (TFun (TVar "x") (TVar "x"))
-
-    -- | Lam Pattern Expr
-    -- | App Expr Expr
-    -- | Tup
-    -- | Rec [(String, Expr)]
-    -- | Ann Expr Typ
-    -- | Or Expr Expr
-
-    --   check' (Typ []) Map.empty `shouldBe` Right (Typ [])
-    --   check' (Typ ["A", "B"]) Map.empty `shouldBe` Left (UndefinedName "A")
-    --   --   check' (Typ ["A", "B"]) (Map.fromList [("A", Int 1), ("B", TInt)]) `shouldBe` Right (Typ ["A", "B"])
-    --   check' Tup Map.empty `shouldBe` Right Tup
-    -- --   check' (Tup `App` Int 1 `App` TInt) Map.empty `shouldBe` Right Tup
+      check' (Lam PAny (Int 1)) Map.empty `shouldBe` Right (TFun (TVar "a") TInt)
+      check' (Lam PAny (Var "a")) (Map.singleton "a" (TVar "a")) `shouldBe` Right (TFun (TVar "b") (TVar "a"))
+      check' (Lam (PVar "x") (Var "x")) Map.empty `shouldBe` Right (TFun (TVar "x") (TVar "x"))
+      check' (Or Tup (Int 1)) Map.empty `shouldBe` Left (TypeMismatch TTup TInt)
+      check' (Or (Int 1) (Int 2)) Map.empty `shouldBe` Right TInt
+      check' (App Tup (Int 1)) Map.empty `shouldBe` Left (NotAFunction Tup TTup)
+      check' (App (Lam (PTup []) Tup) (Int 1)) Map.empty `shouldBe` Left (TypeMismatch TTup TInt)
+      check' (App (Lam (PInt 0) Tup) (Int 1)) Map.empty `shouldBe` Right TTup
+      check' (Rec []) Map.empty `shouldBe` Right (TRec [])
+      check' (Rec [("x", Tup), ("y", Int 1)]) Map.empty `shouldBe` Right (TRec [("x", TTup), ("y", TInt)])
 
     it "☯ alternatives" $ do
       let env = defineType "Maybe" [TVar "a"] [("Just", TFun (TVar "a") (TApp (TVar "Maybe") (TVar "a"))), ("Nothing", TApp (TVar "Maybe") (TVar "a"))] Map.empty
