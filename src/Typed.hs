@@ -6,25 +6,25 @@ import Data.Map (Map, (!?))
 import qualified Data.Map as Map
 
 data Expr
-  = Tup
-  | Int Int
+  = Int Int
   | Var String
+  | Tup [Expr]
+  | Rec [(String, Expr)]
   | Ann Expr Typ
   | Lam Pattern Expr
   | Or Expr Expr
   | App Expr Expr
-  | Rec [(String, Expr)]
   deriving (Eq, Show)
 
 data Typ
-  = TTup
-  | TInt
+  = TInt
   | TTyp [String]
   | TVar String
-  | TFun Typ Typ
-  | TApp Typ Typ
+  | TTup [Typ]
   | TRec [(String, Typ)]
   | TAnn String Typ
+  | TFun Typ Typ
+  | TApp Typ Typ
   deriving (Eq, Show)
 
 data Pattern
@@ -33,8 +33,8 @@ data Pattern
   | PVar String
   | PCtr String [Pattern]
   | PTup [Pattern]
-  -- TODO: PRec [(String, Pattern)]
-  -- TODO: PAnn Pattern Typ
+  | PRec [(String, Pattern)]
+  | PAnn Pattern Typ
   deriving (Eq, Show)
 
 type Context = Map String Typ
@@ -62,17 +62,19 @@ defineType name args ctrs ctx = do
 
 occurs :: String -> Typ -> Bool
 occurs x (TVar x') = x == x'
-occurs x (TFun a b) = occurs x a || occurs x b
-occurs x (TRec kvs) = any (occurs x . snd) kvs
+occurs x (TTup items) = any (occurs x) items
+occurs x (TRec fields) = any (occurs x . snd) fields
 occurs x (TAnn x' t) = x == x' || x `occurs` t
+occurs x (TFun a b) = occurs x a || occurs x b
 occurs x (TApp a b) = occurs x a || occurs x b
 occurs _ _ = False
 
 bind :: String -> Typ -> Substitution
 bind x t (TVar x') | x == x' = t
-bind x t (TFun a b) = TFun (bind x t a) (bind x t b)
-bind x t (TRec kvs) = TRec (map (second (bind x t)) kvs)
+bind x t (TTup items) = TTup (map (bind x t) items)
+bind x t (TRec fields) = TRec (map (second (bind x t)) fields)
 bind x t (TAnn x' _) | x == x' = t
+bind x t (TFun a b) = TFun (bind x t a) (bind x t b)
 bind x t (TApp a b) = TApp (bind x t a) (bind x t b)
 bind _ _ t = t
 
@@ -113,22 +115,44 @@ declare PAny ctx = ctx
 declare (PInt _) ctx = ctx
 declare (PVar x) ctx = Map.insert x (TVar x) ctx
 declare (PTup ps) ctx = foldr declare ctx ps
+-- TODO: PRec
 declare (PCtr _ ps) ctx = foldr declare ctx ps
 
+-- TODO: PAnn
 patternType :: Typ -> Pattern -> Typ
 patternType t PAny = TVar (newTypeName 1 t)
 patternType _ (PInt _) = TInt
 patternType _ (PVar x) = TVar x
-patternType t (PTup ps) = foldl TApp TTup (map (patternType t) ps)
+patternType t (PTup ps) = TTup (map (patternType t) ps)
+-- TODO: PRec
 patternType t (PCtr x ps) = foldl TApp (TVar x) (map (patternType t) ps)
 
+-- TODO: PAnn
+
 check :: Expr -> Context -> Either Error (Typ, Substitution)
-check Tup _ = Right (TTup, id)
 check (Int _) _ = Right (TInt, id)
 check (Var x) env = case env !? x of
   Just (TVar x') | x == x' -> Right (TVar x, id)
   Just t -> Right (t, id)
   Nothing -> Left (UndefinedName x)
+check (Tup items) ctx = do
+  let checkItems :: [Expr] -> Either Error ([Typ], Substitution)
+      checkItems (a : items) = do
+        (ta, sa) <- check a ctx
+        (ts, ss) <- checkItems items
+        Right (ss ta : map sa ts, ss . sa)
+      checkItems [] = Right ([], id)
+  (ts, s) <- checkItems items
+  Right (TTup ts, s)
+check (Rec fields) ctx = do
+  let checkFields :: [(String, Expr)] -> Either Error ([(String, Typ)], Substitution)
+      checkFields ((k, a) : fields) = do
+        (ta, sa) <- check a ctx
+        (ts, ss) <- checkFields fields
+        Right ((k, ss ta) : map (second sa) ts, ss . sa)
+      checkFields [] = Right ([], id)
+  (ts, s) <- checkFields fields
+  Right (TRec ts, s)
 check (Ann a t) ctx = do
   (ta, sa) <- check a ctx
   s <- unify (sa t) ta
@@ -148,15 +172,6 @@ check (App a b) ctx = do
       -- TODO: check exhaustive patterns here!
       Right (s ta2, s . sa)
     _ -> Left (NotAFunction a ta)
-check (Rec kvs) ctx = do
-  let checkRecord :: [(String, Expr)] -> Either Error ([(String, Typ)], Substitution)
-      checkRecord ((k, a) : kvs) = do
-        (ta, sa) <- check a ctx
-        (ts, ss) <- checkRecord kvs
-        Right ((k, ta) : ts, ss . sa)
-      checkRecord [] = Right ([], id)
-  (ts, s) <- checkRecord kvs
-  Right (TRec ts, s)
 
 alternatives :: Typ -> Context -> Either Error [Pattern]
 alternatives (TTyp (x : xs)) ctx = do
