@@ -91,6 +91,9 @@ main = hspec $ do
       typecheck' (App (Lam [] (PTup [], Int 1)) (Int 2)) Map.empty `shouldBe` Left (TypeMismatch (TTup []) TInt)
       typecheck' (App (Lam [] (PTup [], Int 1)) (Tup [])) Map.empty `shouldBe` Right TInt
 
+    -- it "☯ missingPatterns" $ do
+    -- it "☯ redundantPatterns" $ do
+
     it "☯ alternatives" $ do
       let env = defineType "Maybe" [TVar "a"] [("Just", TFun (TVar "a") (TApp (TVar "Maybe") (TVar "a"))), ("Nothing", TApp (TVar "Maybe") (TVar "a"))] Map.empty
       alternatives TInt env `shouldBe` Right [PAny]

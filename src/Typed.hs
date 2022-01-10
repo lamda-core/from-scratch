@@ -146,10 +146,7 @@ typecheck (App a b) ctx = do
   case ta of
     TFun ta1 ta2 -> do
       (_, s) <- typecheck (Ann b ta1) ctx
-      missing <- missingPatterns a [PAny] ctx
-      if null missing
-        then Right (s ta2, s . sa)
-        else Left (MissingPatterns missing)
+      Right (s ta2, s . sa)
     _ -> Left (NotAFunction a ta)
 
 typecheckMany :: [Expr] -> Context -> Either Error ([Typ], Substitution)
@@ -159,8 +156,8 @@ typecheckMany (a : items) ctx = do
   Right (ss ta : map sa ts, ss . sa)
 typecheckMany [] _ = Right ([], id)
 
-missingPatterns :: Expr -> [Pattern] -> Context -> Either Error [Pattern]
-missingPatterns e missing ctx = Right []
+missingPatterns :: [(Pattern, Expr)] -> (Pattern, Expr) -> [Pattern] -> Context -> Either Error [Pattern]
+missingPatterns cases defaultCase missing ctx = Right missing
 
 alternatives :: Typ -> Context -> Either Error [Pattern]
 alternatives (TTyp (x : xs)) ctx = do
