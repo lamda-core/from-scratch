@@ -1,6 +1,6 @@
 module Typed where
 
-import Data.Bifunctor (second)
+import Data.Bifunctor (first, second)
 import Data.Char (chr, ord)
 import Data.Map (Map, (!?))
 import qualified Data.Map as Map
@@ -11,8 +11,7 @@ data Expr
   | Tup [Expr]
   | Rec [(String, Expr)]
   | Ann Expr Typ
-  | Lam Pattern Expr
-  | Or Expr Expr
+  | Lam [(Pattern, Expr)] (Pattern, Expr)
   | App Expr Expr
   deriving (Eq, Show)
 
@@ -22,7 +21,6 @@ data Typ
   | TVar String
   | TTup [Typ]
   | TRec [(String, Typ)]
-  | TAnn String Typ
   | TFun Typ Typ
   | TApp Typ Typ
   deriving (Eq, Show)
@@ -34,7 +32,6 @@ data Pattern
   | PCtr String [Pattern]
   | PTup [Pattern]
   | PRec [(String, Pattern)]
-  | PAnn Pattern Typ
   deriving (Eq, Show)
 
 type Context = Map String Typ
@@ -64,7 +61,6 @@ occurs :: String -> Typ -> Bool
 occurs x (TVar x') = x == x'
 occurs x (TTup items) = any (occurs x) items
 occurs x (TRec fields) = any (occurs x . snd) fields
-occurs x (TAnn x' t) = x == x' || x `occurs` t
 occurs x (TFun a b) = occurs x a || occurs x b
 occurs x (TApp a b) = occurs x a || occurs x b
 occurs _ _ = False
@@ -73,19 +69,15 @@ bind :: String -> Typ -> Substitution
 bind x t (TVar x') | x == x' = t
 bind x t (TTup items) = TTup (map (bind x t) items)
 bind x t (TRec fields) = TRec (map (second (bind x t)) fields)
-bind x t (TAnn x' _) | x == x' = t
 bind x t (TFun a b) = TFun (bind x t a) (bind x t b)
 bind x t (TApp a b) = TApp (bind x t a) (bind x t b)
 bind _ _ t = t
 
 unify :: Typ -> Typ -> Either Error Substitution
 unify (TFun a1 b1) (TFun a2 b2) = unifyPair TFun a1 b1 a2 b2
--- TODO: TCtr
+-- TODO: TTup
 -- TODO: TRec
-unify (TAnn x a) b = do
-  s <- unify a b
-  Right (s . bind x a)
-unify a (TAnn x b) = unify (TAnn x a) b
+-- TODO: TCtr
 unify a a' | a == a' = Right id
 unify (TVar x) b | x `occurs` b = Left (TypeMismatch (TVar x) b)
 unify a (TVar x) | x `occurs` a = Left (TypeMismatch a (TVar x))
@@ -114,73 +106,75 @@ declare :: Pattern -> Context -> Context
 declare PAny ctx = ctx
 declare (PInt _) ctx = ctx
 declare (PVar x) ctx = Map.insert x (TVar x) ctx
-declare (PTup ps) ctx = foldr declare ctx ps
--- TODO: PRec
-declare (PCtr _ ps) ctx = foldr declare ctx ps
+declare (PTup items) ctx = foldr declare ctx items
+declare (PRec fields) ctx = foldr (declare . snd) ctx fields
+declare (PCtr _ args) ctx = foldr declare ctx args
 
--- TODO: PAnn
-patternType :: Typ -> Pattern -> Typ
-patternType t PAny = TVar (newTypeName 1 t)
-patternType _ (PInt _) = TInt
-patternType _ (PVar x) = TVar x
-patternType t (PTup ps) = TTup (map (patternType t) ps)
--- TODO: PRec
-patternType t (PCtr x ps) = foldl TApp (TVar x) (map (patternType t) ps)
+patternType :: Pattern -> Typ -> Context -> Typ
+patternType PAny t _ = TVar (newTypeName 1 t)
+patternType (PInt _) _ _ = TInt
+patternType (PVar x) _ _ = TVar x
+patternType (PTup items) t ctx = TTup (map (\p -> patternType p t ctx) items)
+patternType (PRec fields) t ctx = TRec (map (\(x, p) -> (x, patternType p t ctx)) fields)
+patternType (PCtr x args) t ctx = foldl TApp (TVar x) (map (\p -> patternType p t ctx) args)
 
--- TODO: PAnn
-
-check :: Expr -> Context -> Either Error (Typ, Substitution)
-check (Int _) _ = Right (TInt, id)
-check (Var x) env = case env !? x of
-  Just (TVar x') | x == x' -> Right (TVar x, id)
+typecheck :: Expr -> Context -> Either Error (Typ, Substitution)
+typecheck (Int _) _ = Right (TInt, id)
+typecheck (Var x) env = case env !? x of
   Just t -> Right (t, id)
   Nothing -> Left (UndefinedName x)
-check (Tup items) ctx = do
-  let checkItems :: [Expr] -> Either Error ([Typ], Substitution)
-      checkItems (a : items) = do
-        (ta, sa) <- check a ctx
-        (ts, ss) <- checkItems items
-        Right (ss ta : map sa ts, ss . sa)
-      checkItems [] = Right ([], id)
-  (ts, s) <- checkItems items
+typecheck (Tup items) ctx = do
+  (ts, s) <- typecheckMany items ctx
   Right (TTup ts, s)
-check (Rec fields) ctx = do
-  let checkFields :: [(String, Expr)] -> Either Error ([(String, Typ)], Substitution)
-      checkFields ((k, a) : fields) = do
-        (ta, sa) <- check a ctx
-        (ts, ss) <- checkFields fields
-        Right ((k, ss ta) : map (second sa) ts, ss . sa)
-      checkFields [] = Right ([], id)
-  (ts, s) <- checkFields fields
-  Right (TRec ts, s)
-check (Ann a t) ctx = do
-  (ta, sa) <- check a ctx
+typecheck (Rec fields) ctx = do
+  (ts, s) <- typecheckMany (map snd fields) ctx
+  Right (TRec (zip (map fst fields) ts), s)
+typecheck (Ann a t) ctx = do
+  (ta, sa) <- typecheck a ctx
   s <- unify (sa t) ta
   Right (s ta, s . sa)
-check (Lam p a) ctx = do
-  (t, s) <- check a (declare p ctx)
-  Right (TFun (patternType t p) t, s)
-check (Or a b) ctx = do
-  (ta, sa) <- check a ctx
-  (t, s) <- check (Ann b ta) ctx
-  Right (t, s . sa)
-check (App a b) ctx = do
-  (ta, sa) <- check a ctx
+typecheck (Lam cases defaultCase) ctx = do
+  let typecheckCase :: (Pattern, Expr) -> Either Error (Typ, Substitution)
+      typecheckCase (p, a) = do
+        (ta, s) <- typecheck a (declare p ctx)
+        Right (TFun (patternType p ta ctx) ta, s)
+  let typecheckCases :: [(Pattern, Expr)] -> Either Error (Typ, Substitution)
+      typecheckCases ((p, a) : cases) = do
+        (ta, sa) <- typecheckCase (p, a)
+        (tb, sb) <- typecheckCases cases
+        s <- unify (sb ta) (sa tb)
+        Right (s (sb ta), s . sb . sa)
+      typecheckCases [] = typecheckCase defaultCase
+  typecheckCases cases
+typecheck (App a b) ctx = do
+  (ta, sa) <- typecheck a ctx
   case ta of
     TFun ta1 ta2 -> do
-      (_, s) <- check (Ann b ta1) ctx
-      -- TODO: check exhaustive patterns here!
-      Right (s ta2, s . sa)
+      (_, s) <- typecheck (Ann b ta1) ctx
+      missing <- missingPatterns a [PAny] ctx
+      if null missing
+        then Right (s ta2, s . sa)
+        else Left (MissingPatterns missing)
     _ -> Left (NotAFunction a ta)
+
+typecheckMany :: [Expr] -> Context -> Either Error ([Typ], Substitution)
+typecheckMany (a : items) ctx = do
+  (ta, sa) <- typecheck a ctx
+  (ts, ss) <- typecheckMany items ctx
+  Right (ss ta : map sa ts, ss . sa)
+typecheckMany [] _ = Right ([], id)
+
+missingPatterns :: Expr -> [Pattern] -> Context -> Either Error [Pattern]
+missingPatterns e missing ctx = Right []
 
 alternatives :: Typ -> Context -> Either Error [Pattern]
 alternatives (TTyp (x : xs)) ctx = do
-  (t, _) <- check (Var x) ctx
+  (t, _) <- typecheck (Var x) ctx
   alts <- alternatives (TTyp xs) ctx
   Right (PCtr x (replicate (arity t) PAny) : alts)
 alternatives (TTyp []) _ = Right []
 alternatives (TVar x) ctx = do
-  (kind, _) <- check (Var x) ctx
+  (kind, _) <- typecheck (Var x) ctx
   alternatives kind ctx
 alternatives (TApp t _) ctx = alternatives t ctx
 alternatives (TFun _ t) ctx = alternatives t ctx
@@ -188,7 +182,7 @@ alternatives _ _ = Right [PAny]
 
 specialize :: [Pattern] -> Context -> Either Error [Pattern]
 specialize (PCtr x args : ps) ctx = do
-  (t, _) <- check (Var x) ctx
+  (t, _) <- typecheck (Var x) ctx
   alts <- alternatives t ctx
   cases <- specialize ps ctx
   Right (alts <> cases)

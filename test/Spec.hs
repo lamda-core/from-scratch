@@ -25,9 +25,6 @@ main = hspec $ do
       "x" `occurs` TRec [] `shouldBe` False
       "x" `occurs` TRec [("x", TVar "y")] `shouldBe` False
       "x" `occurs` TRec [("y", TVar "x")] `shouldBe` True
-      "x" `occurs` TAnn "y" (TVar "y") `shouldBe` False
-      "x" `occurs` TAnn "x" (TVar "y") `shouldBe` True
-      "x" `occurs` TAnn "y" (TVar "x") `shouldBe` True
       "x" `occurs` TTyp ["x"] `shouldBe` False
       "x" `occurs` TFun (TVar "y") (TVar "y") `shouldBe` False
       "x" `occurs` TFun (TVar "x") (TVar "y") `shouldBe` True
@@ -43,7 +40,7 @@ main = hspec $ do
       bind "x" (TVar "y") (TVar "z") `shouldBe` TVar "z"
       bind "x" (TVar "y") (TTup [TVar "x"]) `shouldBe` TTup [TVar "y"]
       bind "x" (TVar "y") (TRec [("x", TVar "x")]) `shouldBe` TRec [("x", TVar "y")]
-      bind "x" (TVar "y") (TAnn "x" (TVar "z")) `shouldBe` TVar "y"
+      -- bind "x" (TVar "y") (TAnn "x" (TVar "z")) `shouldBe` TVar "y"
       bind "x" (TVar "y") (TFun (TVar "x") (TVar "x")) `shouldBe` TFun (TVar "y") (TVar "y")
       bind "x" (TVar "y") (TApp (TVar "x") (TVar "x")) `shouldBe` TApp (TVar "y") (TVar "y")
 
@@ -54,9 +51,9 @@ main = hspec $ do
       unify' (TVar "x") TInt `shouldBe` Right TInt
       unify' TInt (TVar "x") `shouldBe` Right TInt
       unify' (TVar "x") (TFun (TVar "x") TInt) `shouldBe` Left (TypeMismatch (TVar "x") (TFun (TVar "x") TInt))
-      unify' (TAnn "x" TInt) (TTyp []) `shouldBe` Left (TypeMismatch TInt (TTyp []))
-      unify' (TAnn "x" TInt) TInt `shouldBe` Right TInt
-      unify' TInt (TAnn "x" TInt) `shouldBe` Right TInt
+      -- unify' (TAnn "x" TInt) (TTyp []) `shouldBe` Left (TypeMismatch TInt (TTyp []))
+      -- unify' (TAnn "x" TInt) TInt `shouldBe` Right TInt
+      -- unify' TInt (TAnn "x" TInt) `shouldBe` Right TInt
       unify' (TFun (TVar "x") TInt) (TVar "x") `shouldBe` Left (TypeMismatch (TFun (TVar "x") TInt) (TVar "x"))
       unify' (TFun (TVar "x") TInt) (TFun (TTyp []) TInt) `shouldBe` Right (TTyp [])
       unify' (TFun TInt (TVar "x")) (TFun TInt (TTyp [])) `shouldBe` Right (TTyp [])
@@ -73,27 +70,25 @@ main = hspec $ do
       newTypeName 24 (TVar "x") `shouldBe` "y"
       newTypeName 24 (TFun (TVar "x") (TVar "y")) `shouldBe` "z"
 
-    it "☯ check" $ do
-      let check' expr env = fmap fst (check expr env)
-      check' (Int 1) Map.empty `shouldBe` Right TInt
-      check' (Var "x") Map.empty `shouldBe` Left (UndefinedName "x")
-      check' (Var "x") (Map.singleton "x" TInt) `shouldBe` Right TInt
-      check' (Var "x") (Map.singleton "x" (TVar "y")) `shouldBe` Right (TVar "y")
-      check' (Tup []) Map.empty `shouldBe` Right (TTup [])
-      check' (Tup [Int 1, Tup []]) Map.empty `shouldBe` Right (TTup [TInt, TTup []])
-      check' (Rec []) Map.empty `shouldBe` Right (TRec [])
-      check' (Rec [("x", Int 1), ("y", Tup [])]) Map.empty `shouldBe` Right (TRec [("x", TInt), ("y", TTup [])])
-      check' (Ann (Int 1) (TTup [])) Map.empty `shouldBe` Left (TypeMismatch (TTup []) TInt)
-      check' (Ann (Int 1) TInt) Map.empty `shouldBe` Right TInt
-      check' (Lam PAny (Var "x")) Map.empty `shouldBe` Left (UndefinedName "x")
-      check' (Lam PAny (Int 1)) Map.empty `shouldBe` Right (TFun (TVar "a") TInt)
-      check' (Lam PAny (Var "a")) (Map.singleton "a" (TVar "a")) `shouldBe` Right (TFun (TVar "b") (TVar "a"))
-      check' (Lam (PVar "x") (Var "x")) Map.empty `shouldBe` Right (TFun (TVar "x") (TVar "x"))
-      check' (Or (Int 1) (Tup [])) Map.empty `shouldBe` Left (TypeMismatch TInt (TTup []))
-      check' (Or (Int 1) (Int 2)) Map.empty `shouldBe` Right TInt
-      check' (App (Int 1) (Tup [])) Map.empty `shouldBe` Left (NotAFunction (Int 1) TInt)
-      check' (App (Lam (PTup []) (Int 1)) (Int 2)) Map.empty `shouldBe` Left (TypeMismatch (TTup []) TInt)
-      check' (App (Lam (PTup []) (Int 1)) (Tup [])) Map.empty `shouldBe` Right TInt
+    it "☯ typecheck" $ do
+      let typecheck' expr env = fmap fst (typecheck expr env)
+      typecheck' (Int 1) Map.empty `shouldBe` Right TInt
+      typecheck' (Var "x") Map.empty `shouldBe` Left (UndefinedName "x")
+      typecheck' (Var "x") (Map.singleton "x" TInt) `shouldBe` Right TInt
+      typecheck' (Var "x") (Map.singleton "x" (TVar "y")) `shouldBe` Right (TVar "y")
+      typecheck' (Tup []) Map.empty `shouldBe` Right (TTup [])
+      typecheck' (Tup [Int 1, Tup []]) Map.empty `shouldBe` Right (TTup [TInt, TTup []])
+      typecheck' (Rec []) Map.empty `shouldBe` Right (TRec [])
+      typecheck' (Rec [("x", Int 1), ("y", Tup [])]) Map.empty `shouldBe` Right (TRec [("x", TInt), ("y", TTup [])])
+      typecheck' (Ann (Int 1) (TTup [])) Map.empty `shouldBe` Left (TypeMismatch (TTup []) TInt)
+      typecheck' (Ann (Int 1) TInt) Map.empty `shouldBe` Right TInt
+      typecheck' (Lam [] (PAny, Var "x")) Map.empty `shouldBe` Left (UndefinedName "x")
+      typecheck' (Lam [] (PAny, Int 1)) Map.empty `shouldBe` Right (TFun (TVar "a") TInt)
+      typecheck' (Lam [] (PAny, Var "a")) (Map.singleton "a" (TVar "a")) `shouldBe` Right (TFun (TVar "b") (TVar "a"))
+      typecheck' (Lam [] (PVar "x", Var "x")) Map.empty `shouldBe` Right (TFun (TVar "x") (TVar "x"))
+      typecheck' (App (Int 1) (Tup [])) Map.empty `shouldBe` Left (NotAFunction (Int 1) TInt)
+      typecheck' (App (Lam [] (PTup [], Int 1)) (Int 2)) Map.empty `shouldBe` Left (TypeMismatch (TTup []) TInt)
+      typecheck' (App (Lam [] (PTup [], Int 1)) (Tup [])) Map.empty `shouldBe` Right TInt
 
     it "☯ alternatives" $ do
       let env = defineType "Maybe" [TVar "a"] [("Just", TFun (TVar "a") (TApp (TVar "Maybe") (TVar "a"))), ("Nothing", TApp (TVar "Maybe") (TVar "a"))] Map.empty
