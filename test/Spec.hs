@@ -85,7 +85,8 @@ main = hspec $ do
       typecheck' (Lam [] (PAny, Var "x")) Map.empty `shouldBe` Left (UndefinedName "x")
       typecheck' (Lam [] (PAny, Int 1)) Map.empty `shouldBe` Right (TFun (TVar "a") TInt)
       typecheck' (Lam [] (PAny, Var "a")) (Map.singleton "a" (TVar "a")) `shouldBe` Right (TFun (TVar "b") (TVar "a"))
-      typecheck' (Lam [] (PVar "x", Var "x")) Map.empty `shouldBe` Right (TFun (TVar "x") (TVar "x"))
+      typecheck' (Lam [(PInt 1, Tup [])] (PAny, Int 2)) Map.empty `shouldBe` Left (TypeMismatch (TTup []) TInt)
+      typecheck' (Lam [(PInt 1, Tup [])] (PAny, Var "a")) (Map.singleton "a" (TVar "a")) `shouldBe` Right (TFun TInt (TTup []))
       typecheck' (App (Int 1) (Tup [])) Map.empty `shouldBe` Left (NotAFunction (Int 1) TInt)
       typecheck' (App (Lam [] (PTup [], Int 1)) (Int 2)) Map.empty `shouldBe` Left (TypeMismatch (TTup []) TInt)
       typecheck' (App (Lam [] (PTup [], Int 1)) (Tup [])) Map.empty `shouldBe` Right TInt

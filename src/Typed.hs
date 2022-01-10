@@ -133,19 +133,14 @@ typecheck (Ann a t) ctx = do
   (ta, sa) <- typecheck a ctx
   s <- unify (sa t) ta
   Right (s ta, s . sa)
-typecheck (Lam cases defaultCase) ctx = do
-  let typecheckCase :: (Pattern, Expr) -> Either Error (Typ, Substitution)
-      typecheckCase (p, a) = do
-        (ta, s) <- typecheck a (declare p ctx)
-        Right (TFun (patternType p ta ctx) ta, s)
-  let typecheckCases :: [(Pattern, Expr)] -> Either Error (Typ, Substitution)
-      typecheckCases ((p, a) : cases) = do
-        (ta, sa) <- typecheckCase (p, a)
-        (tb, sb) <- typecheckCases cases
-        s <- unify (sb ta) (sa tb)
-        Right (s (sb ta), s . sb . sa)
-      typecheckCases [] = typecheckCase defaultCase
-  typecheckCases cases
+typecheck (Lam [] (p, a)) ctx = do
+  (t, s) <- typecheck a (declare p ctx)
+  Right (TFun (patternType p t ctx) t, s)
+typecheck (Lam ((p, a) : cases) defaultCase) ctx = do
+  (ta, sa) <- typecheck (Lam [] (p, a)) ctx
+  (tb, sb) <- typecheck (Lam cases defaultCase) ctx
+  s <- unify (sb ta) (sa tb)
+  Right (s (sb ta), s . sb . sa)
 typecheck (App a b) ctx = do
   (ta, sa) <- typecheck a ctx
   case ta of
