@@ -40,7 +40,7 @@ type Substitution = Typ -> Typ
 
 data Error
   = UndefinedName String
-  | NotAFunction Expr Typ
+  | NotAFunction Typ
   | TypeMismatch Typ Typ
   | NumArgsMismatch {ctr :: String, expected :: Int, got :: Int}
   | RedundantPattern Pattern
@@ -118,10 +118,42 @@ patternType (PTup items) t ctx = TTup (map (\p -> patternType p t ctx) items)
 patternType (PRec fields) t ctx = TRec (map (\(x, p) -> (x, patternType p t ctx)) fields)
 patternType (PCtr x args) t ctx = foldl TApp (TVar x) (map (\p -> patternType p t ctx) args)
 
+typeOfPattern :: Pattern -> Int -> Context -> Either Error (Typ, Int)
+typeOfPattern PAny i ctx = do
+  let x = intToName i
+  Right (TVar x, i + 1)
+typeOfPattern (PInt _) i _ = Right (TInt, i)
+typeOfPattern (PVar x) i _ = Right (TVar x, i)
+typeOfPattern (PTup items) i ctx = do
+  (ts, i) <- typeOfPatterns items i ctx
+  Right (TTup ts, i)
+typeOfPattern (PRec fields) i ctx = do
+  (ts, i) <- typeOfPatterns (map snd fields) i ctx
+  Right (TRec (zip (map fst fields) ts), i)
+typeOfPattern (PCtr x args) i ctx = do
+  (ctrType, _) <- typecheck (Var x) ctx
+  (ts, i) <- typeOfPatterns args i ctx
+  t <- foldType ctrType ts ctx
+  Right (t, i)
+
+foldType :: Typ -> [Typ] -> Context -> Either Error Typ
+foldType (TFun a b) (c : ts) ctx = do
+  s <- unify a c
+  foldType b ts ctx
+foldType t (_ : _) _ = Left (NotAFunction t)
+foldType t [] _ = Right t
+
+typeOfPatterns :: [Pattern] -> Int -> Context -> Either Error ([Typ], Int)
+typeOfPatterns (p : ps) i ctx = do
+  (t, i) <- typeOfPattern p i ctx
+  (ts, i) <- typeOfPatterns ps i ctx
+  Right (t : ts, i)
+typeOfPatterns [] i _ = Right ([], i)
+
 typecheck :: Expr -> Context -> Either Error (Typ, Substitution)
 typecheck (Int _) _ = Right (TInt, id)
 typecheck (Var x) env = case env !? x of
-  Just t -> Right (t, id)
+  Just t -> Right (t, id) -- TODO: rename type variables!
   Nothing -> Left (UndefinedName x)
 typecheck (Tup items) ctx = do
   (ts, s) <- typecheckMany items ctx
@@ -147,7 +179,7 @@ typecheck (App a b) ctx = do
     TFun ta1 ta2 -> do
       (_, s) <- typecheck (Ann b ta1) ctx
       Right (s ta2, s . sa)
-    _ -> Left (NotAFunction a ta)
+    _ -> Left (NotAFunction ta)
 
 typecheckMany :: [Expr] -> Context -> Either Error ([Typ], Substitution)
 typecheckMany (a : items) ctx = do
@@ -155,9 +187,6 @@ typecheckMany (a : items) ctx = do
   (ts, ss) <- typecheckMany items ctx
   Right (ss ta : map sa ts, ss . sa)
 typecheckMany [] _ = Right ([], id)
-
-missingPatterns :: [(Pattern, Expr)] -> (Pattern, Expr) -> [Pattern] -> Context -> Either Error [Pattern]
-missingPatterns cases defaultCase missing ctx = Right missing
 
 alternatives :: Typ -> Context -> Either Error [Pattern]
 alternatives (TTyp (x : xs)) ctx = do

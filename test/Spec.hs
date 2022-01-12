@@ -1,9 +1,12 @@
 import qualified Data.Map as Map
+import ParserTests (parserTests)
 import Test.Hspec
 import Typed
 
 main :: IO ()
 main = hspec $ do
+  parserTests
+
   describe "--== Typed ==--" $ do
     it "☯ defineType" $ do
       defineType "T" [] [] Map.empty `shouldBe` Map.singleton "T" (TTyp [])
@@ -87,12 +90,9 @@ main = hspec $ do
       typecheck' (Lam [] (PAny, Var "a")) (Map.singleton "a" (TVar "a")) `shouldBe` Right (TFun (TVar "b") (TVar "a"))
       typecheck' (Lam [(PInt 1, Tup [])] (PAny, Int 2)) Map.empty `shouldBe` Left (TypeMismatch (TTup []) TInt)
       typecheck' (Lam [(PInt 1, Tup [])] (PAny, Var "a")) (Map.singleton "a" (TVar "a")) `shouldBe` Right (TFun TInt (TTup []))
-      typecheck' (App (Int 1) (Tup [])) Map.empty `shouldBe` Left (NotAFunction (Int 1) TInt)
+      typecheck' (App (Int 1) (Tup [])) Map.empty `shouldBe` Left (NotAFunction TInt)
       typecheck' (App (Lam [] (PTup [], Int 1)) (Int 2)) Map.empty `shouldBe` Left (TypeMismatch (TTup []) TInt)
       typecheck' (App (Lam [] (PTup [], Int 1)) (Tup [])) Map.empty `shouldBe` Right TInt
-
-    -- it "☯ missingPatterns" $ do
-    -- it "☯ redundantPatterns" $ do
 
     it "☯ alternatives" $ do
       let env = defineType "Maybe" [TVar "a"] [("Just", TFun (TVar "a") (TApp (TVar "Maybe") (TVar "a"))), ("Nothing", TApp (TVar "Maybe") (TVar "a"))] Map.empty
@@ -107,7 +107,9 @@ main = hspec $ do
     it "☯ specialize" $ do
       let env = defineType "Maybe" [TVar "a"] [("Just", TFun (TVar "a") (TApp (TVar "Maybe") (TVar "a"))), ("Nothing", TApp (TVar "Maybe") (TVar "a"))] Map.empty
       specialize [] env `shouldBe` Right []
+      specialize [PInt 1] env `shouldBe` Right [PAny]
       specialize [PCtr "Nothing" []] env `shouldBe` Right [PCtr "Just" [PAny], PCtr "Nothing" []]
+      specialize [PCtr "Just" []] env `shouldBe` Right [PCtr "Just" [PAny], PCtr "Nothing" []]
 
 -- it "☯ specialize" $ do
 --   let env = defineType "T" [] [("A", Var "T"), ("B", Fun TInt $ Var "T")] Map.empty
