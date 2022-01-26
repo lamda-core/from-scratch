@@ -2,222 +2,234 @@ module Typed where
 
 import Data.Bifunctor (first, second)
 import Data.Char (chr, ord)
-import Data.Map (Map, (!?))
+import Data.Map (Map, member, (!?))
 import qualified Data.Map as Map
+import Data.Set (Set)
+import qualified Data.Set as Set
 
 data Expr
-  = Int Int
+  = Any
+  | Tup
+  | IntT
+  | Int Int
   | Var String
-  | Tup [Expr]
-  | Rec [(String, Expr)]
+  | Typ [String]
+  | For String Expr
   | Ann Expr Typ
-  | Lam [(Pattern, Expr)] (Pattern, Expr)
+  | Fun Typ Typ
   | App Expr Expr
+  | Lam [(Pattern, Expr)] (Pattern, Expr)
   deriving (Eq, Show)
 
-data Typ
-  = TInt
-  | TTyp [String]
-  | TVar String
-  | TTup [Typ]
-  | TRec [(String, Typ)]
-  | TFun Typ Typ
-  | TApp Typ Typ
+type Typ = Expr
+
+type Pattern = Expr
+
+type Substitution = Expr -> Expr
+
+data Env = Env
+  { seed :: Int,
+    vars :: Map String Expr
+  }
   deriving (Eq, Show)
-
-data Pattern
-  = PAny
-  | PInt Int
-  | PVar String
-  | PCtr String [Pattern]
-  | PTup [Pattern]
-  | PRec [(String, Pattern)]
-  deriving (Eq, Show)
-
-type Context = Map String Typ
-
-type Substitution = Typ -> Typ
 
 data Error
   = UndefinedName String
-  | NotAFunction Typ
-  | TypeMismatch Typ Typ
-  | NumArgsMismatch {ctr :: String, expected :: Int, got :: Int}
-  | RedundantPattern Pattern
-  | MissingPatterns [Pattern]
+  | CannotUnify Expr Expr
   deriving (Eq, Show)
 
-arity :: Typ -> Int
-arity (TFun _ b) = 1 + arity b
-arity _ = 0
+empty :: Env
+empty = Env {seed = 1, vars = Map.empty}
 
-defineType :: String -> [Typ] -> [(String, Typ)] -> Context -> Context
-defineType name args ctrs ctx = do
-  let kind = foldr TFun (TTyp (map fst ctrs)) args
-  let defineCtr ctx' (x, t) = Map.insert x t ctx'
-  foldl defineCtr (Map.insert name kind ctx) ctrs
+fromList :: [(String, Expr)] -> Env
+fromList vars = empty {vars = Map.fromList vars}
 
-occurs :: String -> Typ -> Bool
-occurs x (TVar x') = x == x'
-occurs x (TTup items) = any (occurs x) items
-occurs x (TRec fields) = any (occurs x . snd) fields
-occurs x (TFun a b) = occurs x a || occurs x b
-occurs x (TApp a b) = occurs x a || occurs x b
+has :: String -> Env -> Bool
+has x env = x `member` vars env
+
+get :: String -> Env -> Maybe Expr
+get x env = vars env !? x
+
+set :: String -> Expr -> Env -> Env
+set x t env = env {vars = Map.insert x t (vars env)}
+
+-- TODO: FIX THIS
+defineType :: String -> [Typ] -> [(String, Typ)] -> Env -> Env
+defineType name args ctrs env = do
+  let kind = foldr Fun (Typ (map fst ctrs)) args
+  let defineCtr env' (x, t) = set x t env'
+  foldl defineCtr (set name kind env) ctrs
+
+eval :: Expr -> Env -> Expr
+eval (Var x) env = case get x env of
+  Just (Ann (Var x') _) | x == x' -> Var x
+  Just a | a /= Var x -> eval a env
+  _ -> Var x
+eval (For x a) env = For x (eval a (set x (Var x) env))
+eval (Ann a _) env = eval a env
+eval (Fun a b) env = Fun (eval a env) (eval b env)
+eval (Lam clauses default') env = do
+  let eval' (p, a) = (eval p env, a)
+  Lam (map eval' clauses) (eval' default')
+eval (App fun arg) env = case eval fun env of
+  Lam clauses default' -> match arg clauses default' env
+  fun' | fun == fun' -> App fun' (eval arg env)
+  fun' -> eval (App fun' arg) env
+eval a _ = a
+
+match :: Expr -> [(Pattern, Expr)] -> (Pattern, Expr) -> Env -> Expr
+match a [] (p, b) env = case unify p (eval a env) env of
+  Right (_, env') -> eval b env'
+  Left _ -> eval a env
+match a ((p, b) : clauses) default' env = case unify p (eval a env) env of
+  Right (_, env') -> eval b env'
+  Left _ -> match a clauses default' env
+
+typecheck :: Expr -> Env -> Either Error (Typ, Env)
+typecheck Any env = Right (Any, env)
+typecheck Tup env = Right (Tup, env)
+typecheck IntT env = Right (Typ [], env)
+typecheck (Int _) env = Right (IntT, env)
+typecheck (Var x) env = case get x env of
+  Just (Var x') | x == x' -> Right (Var x, env)
+  Just (Ann (Var x') t) | x == x' -> do
+    (_, env') <- typecheck t env
+    Right (instantiate t env')
+  Just a -> typecheck a env
+  Nothing -> Left (UndefinedName x)
+typecheck (Typ _) env = Right (Typ [], env)
+typecheck (For x a) env = typecheck a (set x (Var x) env)
+typecheck (Ann a t) env = do
+  (ta, env') <- typecheck a env
+  unify t ta env'
+typecheck (Fun a b) env = do
+  (ta, env1) <- typecheck a env
+  (tb, env2) <- typecheck b env
+  Right (Fun (eval ta env2) tb, env2)
+typecheck (Lam [] (p, a)) env = do
+  (tp, env1) <- typecheck p env
+  (ta, env2) <- typecheck a env1
+  Right (Fun (eval tp env2) ta, env2)
+typecheck (Lam (clause : clauses) default') env = do
+  (ta, env1) <- typecheck (Lam [] clause) env
+  (tb, env2) <- typecheck (Lam clauses default') env1
+  unify (eval ta env2) tb env2
+typecheck (App a b) env = do
+  (ta, env1) <- typecheck a env
+  (tb, env2) <- typecheck b env1
+  let (x, env3) = newVar env2
+  (_, env4) <- unify (eval ta env3) (Fun tb (Var x)) env3
+  Right (eval (Var x) env4, env2)
+
+-- TODO: make this return a Maybe and specialize error messages on use
+unify :: Expr -> Expr -> Env -> Either Error (Expr, Env)
+unify Any b env = Right (b, env)
+unify a Any env = Right (a, env)
+unify (For x a) b env = unify a b (set x (Var x) env)
+unify a (For x b) env = unify a b (set x (Var x) env)
+unify (Ann a ta) (Ann b tb) env = unify2 Ann (a, ta) (b, tb) env
+unify (Fun a1 b1) (Fun a2 b2) env = unify2 Fun (a1, b1) (a2, b2) env
+unify a a' env | a == a' = Right (a, env)
+unify (Var x) b env | x `occurs` b = Left (CannotUnify (Var x) b)
+unify a (Var x) env | x `occurs` a = Left (CannotUnify a (Var x))
+unify (Var x) b env = Right (b, set x b env)
+unify a (Var x) env = Right (a, set x a env)
+unify a b env = Left (CannotUnify a b)
+
+unify2 :: (Expr -> Expr -> Expr) -> (Expr, Expr) -> (Expr, Expr) -> Env -> Either Error (Expr, Env)
+unify2 f (a1, b1) (a2, b2) env = do
+  (a, env1) <- unify a1 a2 env
+  (b, env2) <- unify b1 b2 env1
+  Right (f (eval a env2) b, env2)
+
+occurs :: String -> Expr -> Bool
+occurs x (Var x') = x == x'
+occurs x (Ann a b) = occurs x a || occurs x b
+occurs x (Fun a b) = occurs x a || occurs x b
+occurs x (Lam ((p, a) : clauses) _) = occurs x (Lam [] (p, a)) || occurs x (Lam clauses (p, a))
+occurs x (Lam [] (p, a)) = not (occurs x p) && occurs x a
+occurs x (App a b) = occurs x a || occurs x b
 occurs _ _ = False
 
-bind :: String -> Typ -> Substitution
-bind x t (TVar x') | x == x' = t
-bind x t (TTup items) = TTup (map (bind x t) items)
-bind x t (TRec fields) = TRec (map (second (bind x t)) fields)
-bind x t (TFun a b) = TFun (bind x t a) (bind x t b)
-bind x t (TApp a b) = TApp (bind x t a) (bind x t b)
-bind _ _ t = t
+instantiate :: Expr -> Env -> (Expr, Env)
+instantiate (For x a) env | has x env = do
+  let (y, env') = newVar env
+  rename x y a env'
+instantiate (For x a) env = instantiate a (set x (Var x) env)
+instantiate (Ann a t) env = instantiate2 Ann a t env
+instantiate (Fun a b) env = instantiate2 Fun a b env
+instantiate (App a b) env = instantiate2 App a b env
+-- TODO: Lam -- does it make sense?
+instantiate a env = (a, env)
 
-unify :: Typ -> Typ -> Either Error Substitution
-unify (TFun a1 b1) (TFun a2 b2) = unifyPair TFun a1 b1 a2 b2
--- TODO: TTup
--- TODO: TRec
--- TODO: TCtr
-unify a a' | a == a' = Right id
-unify (TVar x) b | x `occurs` b = Left (TypeMismatch (TVar x) b)
-unify a (TVar x) | x `occurs` a = Left (TypeMismatch a (TVar x))
-unify (TVar x) b = Right (bind x b)
-unify a (TVar x) = Right (bind x a)
-unify a b = Left (TypeMismatch a b)
+instantiate2 :: (Expr -> Expr -> Expr) -> Expr -> Expr -> Env -> (Expr, Env)
+instantiate2 f a b env = do
+  let (a', env1) = instantiate a env
+  let (b', env2) = instantiate b env1
+  (f a' b', env2)
 
-unifyPair :: (Typ -> Typ -> Typ) -> Typ -> Typ -> Typ -> Typ -> Either Error Substitution
-unifyPair f a1 b1 a2 b2 = do
-  sa <- unify a1 a2
-  sb <- unify (sa b1) (sa b2)
-  Right (sb . sa)
+rename :: String -> String -> Expr -> Env -> (Expr, Env)
+rename x y (Var x') env | x == x' = (Var y, env)
+rename x y (For y' a) env | y == y' = do
+  let (z, env1) = newVar env
+  let (a', env2) = rename y z a env1
+  rename x y (For z a') env2
+rename x y (For z a) env | x /= z = do
+  let (a', env') = rename x y a env
+  (For z a', env')
+rename x y (Ann a t) env = rename2 x y Ann a t env
+rename x y (Fun a b) env = rename2 x y Fun a b env
+rename x y (App a b) env = rename2 x y App a b env
+-- TODO: Lam -- does it make sense?
+rename _ _ a env = (a, env)
+
+rename2 :: String -> String -> (Expr -> Expr -> Expr) -> Expr -> Expr -> Env -> (Expr, Env)
+rename2 x y f a b env = do
+  let (a', env1) = rename x y a env
+  let (b', env2) = rename x y b env1
+  (f a' b', env2)
+
+newVar :: Env -> (String, Env)
+newVar env = do
+  let x = intToName (seed env)
+  let env' = env {seed = seed env + 1}
+  if has x env
+    then newVar env'
+    else (x, set x (Var x) env')
 
 intToName :: Int -> String
 intToName 0 = ""
-intToName n = do
-  let (q, r) = quotRem (n - 1) 26
+intToName i = do
+  let (q, r) = quotRem (i - 1) 26
   chr (r + ord 'a') : intToName q
 
-newTypeName :: Int -> Typ -> String
-newTypeName n t = do
-  let x = intToName n
-  if x `occurs` t then newTypeName (n + 1) t else x
+-- alternatives :: Typ -> Env -> Either Error [Pattern]
+-- alternatives (Typ (x : xs)) env = do
+--   (t, _) <- typecheck (Var x) env
+--   alts <- alternatives (Typ xs) env
+--   Right (PCtr x (replicate (arity t) PAny) : alts)
+-- alternatives (Typ []) _ = Right []
+-- alternatives (Var x) env = do
+--   (kind, _) <- typecheck (Var x) env
+--   alternatives kind env
+-- alternatives (App t _) env = alternatives t env
+-- alternatives (Fun _ t) env = alternatives t env
+-- alternatives _ _ = Right [PAny]
 
-declare :: Pattern -> Context -> Context
-declare PAny ctx = ctx
-declare (PInt _) ctx = ctx
-declare (PVar x) ctx = Map.insert x (TVar x) ctx
-declare (PTup items) ctx = foldr declare ctx items
-declare (PRec fields) ctx = foldr (declare . snd) ctx fields
-declare (PCtr _ args) ctx = foldr declare ctx args
-
-patternType :: Pattern -> Typ -> Context -> Typ
-patternType PAny t _ = TVar (newTypeName 1 t)
-patternType (PInt _) _ _ = TInt
-patternType (PVar x) _ _ = TVar x
-patternType (PTup items) t ctx = TTup (map (\p -> patternType p t ctx) items)
-patternType (PRec fields) t ctx = TRec (map (\(x, p) -> (x, patternType p t ctx)) fields)
-patternType (PCtr x args) t ctx = foldl TApp (TVar x) (map (\p -> patternType p t ctx) args)
-
-typeOfPattern :: Pattern -> Int -> Context -> Either Error (Typ, Int)
-typeOfPattern PAny i ctx = do
-  let x = intToName i
-  Right (TVar x, i + 1)
-typeOfPattern (PInt _) i _ = Right (TInt, i)
-typeOfPattern (PVar x) i _ = Right (TVar x, i)
-typeOfPattern (PTup items) i ctx = do
-  (ts, i) <- typeOfPatterns items i ctx
-  Right (TTup ts, i)
-typeOfPattern (PRec fields) i ctx = do
-  (ts, i) <- typeOfPatterns (map snd fields) i ctx
-  Right (TRec (zip (map fst fields) ts), i)
-typeOfPattern (PCtr x args) i ctx = do
-  (ctrType, _) <- typecheck (Var x) ctx
-  (ts, i) <- typeOfPatterns args i ctx
-  t <- foldType ctrType ts ctx
-  Right (t, i)
-
-foldType :: Typ -> [Typ] -> Context -> Either Error Typ
-foldType (TFun a b) (c : ts) ctx = do
-  s <- unify a c
-  foldType b ts ctx
-foldType t (_ : _) _ = Left (NotAFunction t)
-foldType t [] _ = Right t
-
-typeOfPatterns :: [Pattern] -> Int -> Context -> Either Error ([Typ], Int)
-typeOfPatterns (p : ps) i ctx = do
-  (t, i) <- typeOfPattern p i ctx
-  (ts, i) <- typeOfPatterns ps i ctx
-  Right (t : ts, i)
-typeOfPatterns [] i _ = Right ([], i)
-
-typecheck :: Expr -> Context -> Either Error (Typ, Substitution)
-typecheck (Int _) _ = Right (TInt, id)
-typecheck (Var x) env = case env !? x of
-  Just t -> Right (t, id) -- TODO: rename type variables!
-  Nothing -> Left (UndefinedName x)
-typecheck (Tup items) ctx = do
-  (ts, s) <- typecheckMany items ctx
-  Right (TTup ts, s)
-typecheck (Rec fields) ctx = do
-  (ts, s) <- typecheckMany (map snd fields) ctx
-  Right (TRec (zip (map fst fields) ts), s)
-typecheck (Ann a t) ctx = do
-  (ta, sa) <- typecheck a ctx
-  s <- unify (sa t) ta
-  Right (s ta, s . sa)
-typecheck (Lam [] (p, a)) ctx = do
-  (t, s) <- typecheck a (declare p ctx)
-  Right (TFun (patternType p t ctx) t, s)
-typecheck (Lam ((p, a) : cases) defaultCase) ctx = do
-  (ta, sa) <- typecheck (Lam [] (p, a)) ctx
-  (tb, sb) <- typecheck (Lam cases defaultCase) ctx
-  s <- unify (sb ta) (sa tb)
-  Right (s (sb ta), s . sb . sa)
-typecheck (App a b) ctx = do
-  (ta, sa) <- typecheck a ctx
-  case ta of
-    TFun ta1 ta2 -> do
-      (_, s) <- typecheck (Ann b ta1) ctx
-      Right (s ta2, s . sa)
-    _ -> Left (NotAFunction ta)
-
-typecheckMany :: [Expr] -> Context -> Either Error ([Typ], Substitution)
-typecheckMany (a : items) ctx = do
-  (ta, sa) <- typecheck a ctx
-  (ts, ss) <- typecheckMany items ctx
-  Right (ss ta : map sa ts, ss . sa)
-typecheckMany [] _ = Right ([], id)
-
-alternatives :: Typ -> Context -> Either Error [Pattern]
-alternatives (TTyp (x : xs)) ctx = do
-  (t, _) <- typecheck (Var x) ctx
-  alts <- alternatives (TTyp xs) ctx
-  Right (PCtr x (replicate (arity t) PAny) : alts)
-alternatives (TTyp []) _ = Right []
-alternatives (TVar x) ctx = do
-  (kind, _) <- typecheck (Var x) ctx
-  alternatives kind ctx
-alternatives (TApp t _) ctx = alternatives t ctx
-alternatives (TFun _ t) ctx = alternatives t ctx
-alternatives _ _ = Right [PAny]
-
-specialize :: [Pattern] -> Context -> Either Error [Pattern]
-specialize (PCtr x args : ps) ctx = do
-  (t, _) <- typecheck (Var x) ctx
-  alts <- alternatives t ctx
-  cases <- specialize ps ctx
-  Right (alts <> cases)
-specialize [] _ = Right []
-specialize _ _ = Right [PAny]
-
--- checkT :: Typ -> Context -> Either Error (Typ, Substitution)
--- checkT (TVar x) env = check (Var x) env
+-- specialize :: [Pattern] -> Env -> Either Error [Pattern]
+-- specialize (PCtr x args : ps) env = do
+--   (t, _) <- typecheck (Var x) env
+--   alts <- alternatives t env
+--   cases <- specialize ps env
+--   Right (alts <> cases)
+-- specialize [] _ = Right []
+-- specialize _ _ = Right [PAny]
 
 -- returnType :: Typ -> Typ
 -- returnType (TFun _ t) = returnType t
 -- returnType t = t
 
--- specialize :: Pattern -> Context -> Either Error [Pattern]
+-- specialize :: Pattern -> Env -> Either Error [Pattern]
 -- specialize (PCtr x ps) env = do
 --   (typ, _) <- check (Var x) env
 --   (kind, _) <- checkT (returnType typ) env
@@ -229,7 +241,7 @@ specialize _ _ = Right [PAny]
 --   Right (map PTup cases)
 -- specialize _ _ = Right [PAny]
 
--- specializeCtr :: [String] -> String -> [Pattern] -> Context -> Either Error [Pattern]
+-- specializeCtr :: [String] -> String -> [Pattern] -> Env -> Either Error [Pattern]
 -- specializeCtr (x : alts) x' ps env | x == x' = do
 --   (t, _) <- check (Var x) env
 --   if length ps == arity t
@@ -244,9 +256,13 @@ specialize _ _ = Right [PAny]
 --   Right (PCtr x (replicate (arity t) PAny) : cases)
 -- specializeCtr [] _ _ _ = Right []
 
--- specializeProduct :: [Pattern] -> Context -> Either Error [[Pattern]]
+-- specializeProduct :: [Pattern] -> Env -> Either Error [[Pattern]]
 -- specializeProduct (p : qs) env = do
 --   ps <- specialize p env
 --   qss <- specializeProduct qs env
 --   Right (concatMap (\p -> map (p :) qss) ps)
 -- specializeProduct [] _ = Right [[]]
+
+-- arity :: Typ -> Int
+-- arity (Fun _ b) = 1 + arity b
+-- arity _ = 0
