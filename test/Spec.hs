@@ -92,7 +92,6 @@ main = hspec $ do
       rename' "x" "y" (For "y" $ Ann (Var "x") (Var "y")) empty `shouldBe` For "a" (Ann (Var "y") (Var "a"))
       rename' "x" "y" (Fun (Var "x") (Var "x")) empty `shouldBe` Fun (Var "y") (Var "y")
       rename' "x" "y" (App (Var "x") (Var "x")) empty `shouldBe` App (Var "y") (Var "y")
-      rename' "x" "y" (Lam [] (Var "x", Var "x")) empty `shouldBe` Lam [] (Var "y", Var "y")
 
     it "☯ instantiate" $ do
       instantiate Any empty `shouldBe` (Any, empty)
