@@ -67,11 +67,13 @@ main = hspec $ do
       eval (Ann (Var "x") (Var "x")) (fromList [("x", Tup)]) `shouldBe` Tup
       eval (Typ ["A"]) empty `shouldBe` Typ ["A"]
       eval (Fun (Var "x") (Var "y")) (fromList [("x", Var "a"), ("y", Var "b")]) `shouldBe` Fun (Var "a") (Var "b")
-      eval (Lam [(Var "x", Int 1)] (Var "x", Int 2)) (fromList [("x", Int 0)]) `shouldBe` Lam [(Int 0, Int 1)] (Int 0, Int 2)
+      eval (Lam []) empty `shouldBe` Lam []
+      eval (Lam [(Var "x", Int 1), (Var "x", Int 2)]) (fromList [("x", Int 0)]) `shouldBe` Lam [(Int 0, Int 1), (Int 0, Int 2)]
       eval (App (Var "x") (Int 1)) (fromList [("x", Var "x")]) `shouldBe` App (Var "x") (Int 1)
-      eval (App (Lam [] (Var "x", Var "x")) (Int 0)) empty `shouldBe` Int 0
-      eval (App (Lam [(Any, Int 1)] (Any, Int 2)) (Int 0)) empty `shouldBe` Int 1
-      eval (App (Lam [(Int 1, Int 1)] (Any, Int 2)) (Int 0)) empty `shouldBe` Int 2
+      eval (App (Lam []) (Int 0)) empty `shouldBe` Any
+      eval (App (Lam [(Var "x", Var "x")]) (Int 0)) empty `shouldBe` Int 0
+      eval (App (Lam [(Any, Int 1), (Any, Int 2)]) (Int 0)) empty `shouldBe` Int 1
+      eval (App (Lam [(Int 1, Int 1), (Any, Int 2)]) (Int 0)) empty `shouldBe` Int 2
 
     it "☯ intToName" $ do
       intToName 0 `shouldBe` ""
@@ -117,13 +119,15 @@ main = hspec $ do
       typecheck' (Ann (Int 1) IntT) empty `shouldBe` Right IntT
       typecheck' (Typ ["A"]) empty `shouldBe` Right (Typ [])
       typecheck' (Fun (Int 1) (Int 2)) empty `shouldBe` Right (Fun IntT IntT)
-      typecheck' (Lam [] (Any, Int 1)) empty `shouldBe` Right (Fun Any IntT)
-      typecheck' (Lam [] (For "x" $ Var "x", Var "x")) empty `shouldBe` Right (Fun (Var "x") (Var "x"))
-      typecheck' (Lam [(Any, Tup)] (Int 1, Int 2)) empty `shouldBe` Left (CannotUnify Tup IntT)
-      typecheck' (Lam [(Any, Tup)] (Int 1, Any)) empty `shouldBe` Right (Fun IntT Tup)
+      typecheck' (Lam []) empty `shouldBe` Right (Fun Any Any)
+      typecheck' (Lam [(Any, Int 1)]) empty `shouldBe` Right (Fun Any IntT)
+      typecheck' (Lam [(For "x" $ Var "x", Var "x")]) empty `shouldBe` Right (Fun (Var "x") (Var "x"))
+      typecheck' (Lam [(Any, Tup), (Int 1, Int 2)]) empty `shouldBe` Left (CannotUnify Tup IntT)
+      typecheck' (Lam [(Any, Tup), (Int 1, Any)]) empty `shouldBe` Right (Fun IntT Tup)
       typecheck' (App (Int 1) Tup) empty `shouldBe` Left (CannotUnify IntT (Fun Tup (Var "a")))
-      typecheck' (App (Lam [] (Tup, Int 1)) (Int 2)) empty `shouldBe` Left (CannotUnify Tup IntT)
-      typecheck' (App (Lam [] (Tup, Int 1)) Tup) empty `shouldBe` Right IntT
+      typecheck' (App (Lam []) (Int 1)) empty `shouldBe` Right (Var "a")
+      typecheck' (App (Lam [(Tup, Int 1)]) (Int 2)) empty `shouldBe` Left (CannotUnify Tup IntT)
+      typecheck' (App (Lam [(Tup, Int 1)]) Tup) empty `shouldBe` Right IntT
 
 -- it "☯ boundVars" $ do
 --   let env = fromList [("x", IntT)]

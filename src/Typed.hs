@@ -18,7 +18,7 @@ data Expr
   | Ann Expr Typ
   | Fun Typ Typ
   | App Expr Expr
-  | Lam [(Pattern, Expr)] (Pattern, Expr)
+  | Lam [(Pattern, Expr)]
   deriving (Eq, Show)
 
 type Typ = Expr
@@ -68,22 +68,18 @@ eval (Var x) env = case get x env of
 eval (For x a) env = For x (eval a (set x (Var x) env))
 eval (Ann a _) env = eval a env
 eval (Fun a b) env = Fun (eval a env) (eval b env)
-eval (Lam clauses default') env = do
-  let eval' (p, a) = (eval p env, a)
-  Lam (map eval' clauses) (eval' default')
+eval (Lam alts) env = Lam (map (\(p, a) -> (eval p env, a)) alts)
 eval (App fun arg) env = case eval fun env of
-  Lam clauses default' -> match arg clauses default' env
+  Lam alts -> match arg alts env
   fun' | fun == fun' -> App fun' (eval arg env)
   fun' -> eval (App fun' arg) env
 eval a _ = a
 
-match :: Expr -> [(Pattern, Expr)] -> (Pattern, Expr) -> Env -> Expr
-match a [] (p, b) env = case unify p (eval a env) env of
+match :: Expr -> [(Pattern, Expr)] -> Env -> Expr
+match a [] env = Any
+match a ((p, b) : alts) env = case unify p (eval a env) env of
   Right (_, env') -> eval b env'
-  Left _ -> eval a env
-match a ((p, b) : clauses) default' env = case unify p (eval a env) env of
-  Right (_, env') -> eval b env'
-  Left _ -> match a clauses default' env
+  Left _ -> match a alts env
 
 typecheck :: Expr -> Env -> Either Error (Typ, Env)
 typecheck Any env = Right (Any, env)
@@ -106,14 +102,12 @@ typecheck (Fun a b) env = do
   (ta, env1) <- typecheck a env
   (tb, env2) <- typecheck b env
   Right (Fun (eval ta env2) tb, env2)
-typecheck (Lam [] (p, a)) env = do
+typecheck (Lam []) env = Right (Fun Any Any, env)
+typecheck (Lam ((p, a) : alts)) env = do
   (tp, env1) <- typecheck p env
   (ta, env2) <- typecheck a env1
-  Right (Fun (eval tp env2) ta, env2)
-typecheck (Lam (clause : clauses) default') env = do
-  (ta, env1) <- typecheck (Lam [] clause) env
-  (tb, env2) <- typecheck (Lam clauses default') env1
-  unify (eval ta env2) tb env2
+  (ts, env3) <- typecheck (Lam alts) env2
+  unify (Fun tp ta) ts env3
 typecheck (App a b) env = do
   (ta, env1) <- typecheck a env
   (tb, env2) <- typecheck b env1
@@ -146,8 +140,7 @@ occurs :: String -> Expr -> Bool
 occurs x (Var x') = x == x'
 occurs x (Ann a b) = occurs x a || occurs x b
 occurs x (Fun a b) = occurs x a || occurs x b
-occurs x (Lam ((p, a) : clauses) _) = occurs x (Lam [] (p, a)) || occurs x (Lam clauses (p, a))
-occurs x (Lam [] (p, a)) = not (occurs x p) && occurs x a
+occurs x (Lam ((p, a) : alts)) = (not (occurs x p) && occurs x a) || occurs x (Lam alts)
 occurs x (App a b) = occurs x a || occurs x b
 occurs _ _ = False
 
