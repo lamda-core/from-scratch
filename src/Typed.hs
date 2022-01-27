@@ -1,11 +1,8 @@
 module Typed where
 
-import Data.Bifunctor (first, second)
 import Data.Char (chr, ord)
 import Data.Map (Map, member, (!?))
 import qualified Data.Map as Map
-import Data.Set (Set)
-import qualified Data.Set as Set
 
 data Expr
   = Any
@@ -42,7 +39,7 @@ empty :: Env
 empty = Env {seed = 1, vars = Map.empty}
 
 fromList :: [(String, Expr)] -> Env
-fromList vars = empty {vars = Map.fromList vars}
+fromList variables = empty {vars = Map.fromList variables}
 
 has :: String -> Env -> Bool
 has x env = x `member` vars env
@@ -69,14 +66,14 @@ eval (For x a) env = For x (eval a (set x (Var x) env))
 eval (Ann a _) env = eval a env
 eval (Fun a b) env = Fun (eval a env) (eval b env)
 eval (Lam alts) env = Lam (map (\(p, a) -> (eval p env, a)) alts)
-eval (App fun arg) env = case eval fun env of
-  Lam alts -> match arg alts env
-  fun' | fun == fun' -> App fun' (eval arg env)
-  fun' -> eval (App fun' arg) env
+eval (App a b) env = case eval a env of
+  Lam alts -> match b alts env
+  a' | a == a' -> App a (eval b env)
+  a' -> eval (App a' b) env
 eval a _ = a
 
 match :: Expr -> [(Pattern, Expr)] -> Env -> Expr
-match a [] env = Any
+match _ [] _ = Any
 match a ((p, b) : alts) env = case unify p (eval a env) env of
   Right (_, env') -> eval b env'
   Left _ -> match a alts env
@@ -100,7 +97,7 @@ typecheck (Ann a t) env = do
   unify t ta env'
 typecheck (Fun a b) env = do
   (ta, env1) <- typecheck a env
-  (tb, env2) <- typecheck b env
+  (tb, env2) <- typecheck b env1
   Right (Fun (eval ta env2) tb, env2)
 typecheck (Lam []) env = Right (Fun Any Any, env)
 typecheck (Lam ((p, a) : alts)) env = do
@@ -115,7 +112,6 @@ typecheck (App a b) env = do
   (_, env4) <- unify (eval ta env3) (Fun tb (Var x)) env3
   Right (eval (Var x) env4, env2)
 
--- TODO: make this return a Maybe and specialize error messages on use
 unify :: Expr -> Expr -> Env -> Either Error (Expr, Env)
 unify Any b env = Right (b, env)
 unify a Any env = Right (a, env)
@@ -124,11 +120,11 @@ unify a (For x b) env = unify a b (set x (Var x) env)
 unify (Ann a ta) (Ann b tb) env = unify2 Ann (a, ta) (b, tb) env
 unify (Fun a1 b1) (Fun a2 b2) env = unify2 Fun (a1, b1) (a2, b2) env
 unify a a' env | a == a' = Right (a, env)
-unify (Var x) b env | x `occurs` b = Left (CannotUnify (Var x) b)
-unify a (Var x) env | x `occurs` a = Left (CannotUnify a (Var x))
+unify (Var x) b _ | x `occurs` b = Left (CannotUnify (Var x) b)
+unify a (Var x) _ | x `occurs` a = Left (CannotUnify a (Var x))
 unify (Var x) b env = Right (b, set x b env)
 unify a (Var x) env = Right (a, set x a env)
-unify a b env = Left (CannotUnify a b)
+unify a b _ = Left (CannotUnify a b)
 
 unify2 :: (Expr -> Expr -> Expr) -> (Expr, Expr) -> (Expr, Expr) -> Env -> Either Error (Expr, Env)
 unify2 f (a1, b1) (a2, b2) env = do

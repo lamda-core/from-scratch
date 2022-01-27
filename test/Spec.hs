@@ -1,4 +1,3 @@
-import qualified Data.Set as Set
 import ParserTests (parserTests)
 import Test.Hspec
 import Typed
