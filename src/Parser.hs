@@ -58,9 +58,9 @@ andThen f parser state = do
   f x s
 
 anyChar :: Parser Char
-anyChar state@State {remaining = ch : tail, token = tok} =
+anyChar state@State {remaining = ch : remaining, token = tok} =
   state
-    { remaining = tail,
+    { remaining = remaining,
       lastChar = Just ch,
       token =
         if ch == '\n'

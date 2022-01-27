@@ -30,4 +30,4 @@ jobs:
             ${{ matrix.os }}-stack
 
       - name: Run tests
-        run: stack test --ghc-options="-Wall -Werror"
+        run: stack test

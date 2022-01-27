@@ -69,13 +69,13 @@ eval (Lam alts) env = Lam (map (\(p, a) -> (eval p env, a)) alts)
 eval (App a b) env = case eval a env of
   Lam alts -> match b alts env
   a' | a == a' -> App a (eval b env)
-  a' -> eval (App a' b) env
+  a -> eval (App a b) env
 eval a _ = a
 
 match :: Expr -> [(Pattern, Expr)] -> Env -> Expr
 match _ [] _ = Any
 match a ((p, b) : alts) env = case unify p (eval a env) env of
-  Right (_, env') -> eval b env'
+  Right (_, env) -> eval b env
   Left _ -> match a alts env
 
 typecheck :: Expr -> Env -> Either Error (Typ, Env)
@@ -86,31 +86,31 @@ typecheck (Int _) env = Right (IntT, env)
 typecheck (Var x) env = case get x env of
   Just (Var x') | x == x' -> Right (Var x, env)
   Just (Ann (Var x') t) | x == x' -> do
-    (_, env') <- typecheck t env
-    Right (instantiate t env')
+    (_, env) <- typecheck t env
+    Right (instantiate t env)
   Just a -> typecheck a env
   Nothing -> Left (UndefinedName x)
 typecheck (Typ _) env = Right (Typ [], env)
 typecheck (For x a) env = typecheck a (set x (Var x) env)
 typecheck (Ann a t) env = do
-  (ta, env') <- typecheck a env
-  unify t ta env'
+  (ta, env) <- typecheck a env
+  unify t ta env
 typecheck (Fun a b) env = do
-  (ta, env1) <- typecheck a env
-  (tb, env2) <- typecheck b env1
-  Right (Fun (eval ta env2) tb, env2)
+  (ta, env) <- typecheck a env
+  (tb, env) <- typecheck b env
+  Right (Fun (eval ta env) tb, env)
 typecheck (Lam []) env = Right (Fun Any Any, env)
 typecheck (Lam ((p, a) : alts)) env = do
-  (tp, env1) <- typecheck p env
-  (ta, env2) <- typecheck a env1
-  (ts, env3) <- typecheck (Lam alts) env2
-  unify (Fun tp ta) ts env3
+  (tp, env) <- typecheck p env
+  (ta, env) <- typecheck a env
+  (ts, env) <- typecheck (Lam alts) env
+  unify (Fun tp ta) ts env
 typecheck (App a b) env = do
-  (ta, env1) <- typecheck a env
-  (tb, env2) <- typecheck b env1
-  let (x, env3) = newVar env2
-  (_, env4) <- unify (eval ta env3) (Fun tb (Var x)) env3
-  Right (eval (Var x) env4, env2)
+  (ta, env) <- typecheck a env
+  (tb, env) <- typecheck b env
+  let (x, env') = newVar env
+  (_, env') <- unify (eval ta env') (Fun tb (Var x)) env'
+  Right (eval (Var x) env', env)
 
 unify :: Expr -> Expr -> Env -> Either Error (Expr, Env)
 unify Any b env = Right (b, env)
@@ -128,9 +128,9 @@ unify a b _ = Left (CannotUnify a b)
 
 unify2 :: (Expr -> Expr -> Expr) -> (Expr, Expr) -> (Expr, Expr) -> Env -> Either Error (Expr, Env)
 unify2 f (a1, b1) (a2, b2) env = do
-  (a, env1) <- unify a1 a2 env
-  (b, env2) <- unify b1 b2 env1
-  Right (f (eval a env2) b, env2)
+  (a, env) <- unify a1 a2 env
+  (b, env) <- unify b1 b2 env
+  Right (f (eval a env) b, env)
 
 occurs :: String -> Expr -> Bool
 occurs x (Var x') = x == x'
