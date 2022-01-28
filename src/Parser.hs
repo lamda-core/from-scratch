@@ -1,9 +1,11 @@
 module Parser where
 
-type Parser a = State -> Either Error (a, State)
+import qualified Data.Char as Char
+
+newtype Parser a = Parser (State -> Either Error (a, State))
 
 data State = State
-  { text :: String,
+  { source :: String,
     remaining :: String,
     lastChar :: Maybe Char,
     token :: Token,
@@ -18,7 +20,7 @@ data Token = Token
   }
   deriving (Eq, Show)
 
-data Error = Expected String State
+data Error = Error String State
   deriving (Eq, Show)
 
 (|>) :: a -> (a -> b) -> b
@@ -26,52 +28,227 @@ data Error = Expected String State
 
 infixl 1 |>
 
+instance Functor Parser where
+  fmap f (Parser p) =
+    Parser
+      ( \state -> do
+          (x, state) <- p state
+          Right (f x, state)
+      )
+
+instance Applicative Parser where
+  pure = succeed
+  parserF <*> parser = do
+    f <- parserF
+    fmap f parser
+
+instance Monad Parser where
+  Parser p >>= f =
+    Parser
+      ( \state -> do
+          (x, state) <- p state
+          let (Parser p') = f x
+          (y, state) <- p' state
+          Right (y, state)
+      )
+  return x = succeed x
+
 parse :: String -> Parser a -> Either Error a
-parse text parser = do
-  (x, _) <-
-    parser
-      ( State
-          { text = text,
-            remaining = text,
+parse source (Parser p) = do
+  let initialState =
+        State
+          { source = source,
+            remaining = source,
             lastChar = Nothing,
             token = Token {name = "", row = 1, col = 1},
             stack = []
           }
-      )
-  Right x
+  fmap fst (p initialState)
 
 succeed :: a -> Parser a
-succeed value state = Right (value, state)
+succeed value = Parser (\state -> Right (value, state))
 
 expected :: String -> Parser a
-expected message state = Left (Expected message state)
+expected message = Parser (Left . Error message)
 
-expecting :: String -> Parser a -> Parser a
-expecting message parser state =
-  case parser state of
-    Left (Expected _ state) -> Left (Expected message state)
-    x -> x
+orElse :: Parser a -> Parser a -> Parser a
+orElse (Parser else') (Parser p) = do
+  Parser
+    ( \state ->
+        case p state of
+          Left _ -> else' state
+          x -> x
+    )
 
-andThen :: (a -> Parser b) -> Parser a -> Parser b
-andThen f parser state = do
-  (x, s) <- parser state
-  f x s
+oneOf :: [Parser a] -> Parser a
+oneOf [] = expected "something"
+oneOf (p : ps) = p |> orElse (oneOf ps)
+
+-- Single characters
 
 anyChar :: Parser Char
-anyChar state@State {remaining = ch : remaining, token = tok} =
-  state
-    { remaining = remaining,
-      lastChar = Just ch,
-      token =
-        if ch == '\n'
-          then tok {row = row tok + 1, col = 1}
-          else tok {col = col tok + 1}
-    }
-    |> succeed ch
-anyChar state = expected "a character" state
+anyChar =
+  let advance state@State {remaining = ch : remaining, token = tok} =
+        Right
+          ( ch,
+            state
+              { remaining = remaining,
+                lastChar = Just ch,
+                token =
+                  if ch == '\n'
+                    then tok {row = row tok + 1, col = 1}
+                    else tok {col = col tok + 1}
+              }
+          )
+      advance state = Left (Error "a character" state)
+   in Parser advance
+
+space :: Parser Char
+space = do
+  ch <- anyChar
+  if Char.isSpace ch then succeed ch else expected "a blank space"
+
+letter :: Parser Char
+letter = do
+  ch <- anyChar
+  if Char.isLetter ch then succeed ch else expected "a letter"
+
+lower :: Parser Char
+lower = do
+  ch <- anyChar
+  if Char.isLower ch then succeed ch else expected "a lowercase letter"
+
+upper :: Parser Char
+upper = do
+  ch <- anyChar
+  if Char.isUpper ch then succeed ch else expected "an uppercase letter"
+
+digit :: Parser Char
+digit = do
+  ch <- anyChar
+  if Char.isDigit ch then succeed ch else expected "a digit from 0 to 9"
+
+alphanumeric :: Parser Char
+alphanumeric = do
+  ch <- anyChar
+  if Char.isAlphaNum ch then succeed ch else expected "a letter or digit"
+
+punctuation :: Parser Char
+punctuation = do
+  ch <- anyChar
+  if Char.isPunctuation ch then succeed ch else expected "a punctuation character"
 
 char :: Char -> Parser Char
-char ch =
-  anyChar
-    |> andThen (\c -> if c == ch then succeed c else expected "")
-    |> expecting ("the character '" <> [ch] <> "'")
+char c = do
+  ch <- anyChar
+  if Char.toLower c == Char.toLower ch then succeed ch else expected $ "the character '" <> [c] <> "'"
+
+charCaseSensitive :: Char -> Parser Char
+charCaseSensitive c = do
+  ch <- anyChar
+  if c == ch then succeed ch else expected $ "the character '" <> [c] <> "' (case sensitive)"
+
+-- Sequences
+optional :: Parser a -> Parser (Maybe a)
+optional parser = fmap Just parser |> orElse (succeed Nothing)
+
+zeroOrOne :: Parser a -> Parser [a]
+zeroOrOne parser = fmap (: []) parser |> orElse (succeed [])
+
+zeroOrMore :: Parser a -> Parser [a]
+zeroOrMore parser =
+  do
+    x <- parser
+    xs <- zeroOrMore parser
+    succeed (x : xs)
+    |> orElse (succeed [])
+
+oneOrMore :: Parser a -> Parser [a]
+oneOrMore parser = do
+  x <- parser
+  xs <- zeroOrMore parser
+  succeed (x : xs)
+
+chain :: [Parser a] -> Parser [a]
+chain [] = succeed []
+chain (p : ps) = do
+  x <- p
+  xs <- chain ps
+  succeed (x : xs)
+
+exactly :: Int -> Parser a -> Parser [a]
+exactly n parser = chain (replicate n parser)
+
+atLeast :: Int -> Parser a -> Parser [a]
+atLeast min parser | min <= 0 = zeroOrMore parser
+atLeast min parser = do
+  x <- parser
+  xs <- atLeast (min - 1) parser
+  succeed (x : xs)
+
+atMost :: Int -> Parser a -> Parser [a]
+atMost max _ | max <= 0 = succeed []
+atMost max parser =
+  do
+    x <- parser
+    xs <- atMost (max - 1) parser
+    succeed (x : xs)
+    |> orElse (succeed [])
+
+between :: Int -> Int -> Parser a -> Parser [a]
+between min max parser | min <= 0 = atMost max parser
+between min max parser = do
+  x <- parser
+  xs <- between (min - 1) (max - 1) parser
+  succeed (x : xs)
+
+-- TODO: until
+-- TODO: split
+-- TODO: splitWithDelimiters
+
+-- Common
+integer :: Parser Int
+integer =
+  do
+    digits <- oneOrMore digit
+    succeed (read digits)
+    |> orElse (expected "an integer value like 123")
+
+number :: Parser Float
+number =
+  do
+    int <- oneOrMore digit
+    _ <- char '.'
+    fraction <- oneOrMore digit
+    succeed (read $ concat [int, ['.'], fraction])
+    |> orElse (expected "a fractional number like 3.14")
+
+text :: String -> Parser String
+text str =
+  chain (fmap char str)
+    |> orElse (expected $ "the text '" <> str <> "'")
+
+textCaseSensitive :: String -> Parser String
+textCaseSensitive str =
+  chain (fmap charCaseSensitive str)
+    |> orElse (expected $ "the text '" <> str <> "' (case sensitive)")
+
+-- TODO: line
+-- TODO: date
+-- TODO: time
+-- TODO: datetime
+-- TODO: email
+-- TODO: unixPath
+-- TODO: windowsPath
+-- TODO: uri
+-- TODO: IPv4
+-- TODO: IPv6
+-- PROGRAMMING LANGUAGES
+-- TODO: identifier
+-- TODO: intBin
+-- TODO: intOct
+-- TODO: intHex
+-- TODO: intExp
+-- TODO: numberExp
+-- TODO: quotedText
+-- TODO: collection
