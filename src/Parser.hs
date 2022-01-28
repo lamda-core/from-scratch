@@ -80,6 +80,10 @@ orElse (Parser else') (Parser p) = do
           x -> x
     )
 
+oneOf :: [Parser a] -> Parser a
+oneOf [] = expected "something"
+oneOf (p : ps) = p |> orElse (oneOf ps)
+
 -- Single characters
 
 anyChar :: Parser Char
@@ -145,6 +149,9 @@ charCaseSensitive c = do
   if c == ch then succeed ch else expected $ "the character '" <> [c] <> "' (case sensitive)"
 
 -- Sequences
+optional :: Parser a -> Parser (Maybe a)
+optional parser = fmap Just parser |> orElse (succeed Nothing)
+
 zeroOrOne :: Parser a -> Parser [a]
 zeroOrOne parser = fmap (: []) parser |> orElse (succeed [])
 
@@ -169,6 +176,79 @@ chain (p : ps) = do
   xs <- chain ps
   succeed (x : xs)
 
+exactly :: Int -> Parser a -> Parser [a]
+exactly n parser = chain (replicate n parser)
+
+atLeast :: Int -> Parser a -> Parser [a]
+atLeast min parser | min <= 0 = zeroOrMore parser
+atLeast min parser = do
+  x <- parser
+  xs <- atLeast (min - 1) parser
+  succeed (x : xs)
+
+atMost :: Int -> Parser a -> Parser [a]
+atMost max _ | max <= 0 = succeed []
+atMost max parser =
+  do
+    x <- parser
+    xs <- atMost (max - 1) parser
+    succeed (x : xs)
+    |> orElse (succeed [])
+
+between :: Int -> Int -> Parser a -> Parser [a]
+between min max parser | min <= 0 = atMost max parser
+between min max parser = do
+  x <- parser
+  xs <- between (min - 1) (max - 1) parser
+  succeed (x : xs)
+
+-- TODO: until
+-- TODO: split
+-- TODO: splitWithDelimiters
+
 -- Common
--- text
--- textNoCase
+integer :: Parser Int
+integer =
+  do
+    digits <- oneOrMore digit
+    succeed (read digits)
+    |> orElse (expected "an integer value like 123")
+
+number :: Parser Float
+number =
+  do
+    int <- oneOrMore digit
+    _ <- char '.'
+    fraction <- oneOrMore digit
+    succeed (read $ concat [int, ['.'], fraction])
+    |> orElse (expected "a fractional number like 3.14")
+
+text :: String -> Parser String
+text str =
+  chain (fmap char str)
+    |> orElse (expected $ "the text '" <> str <> "'")
+
+textCaseSensitive :: String -> Parser String
+textCaseSensitive str =
+  chain (fmap charCaseSensitive str)
+    |> orElse (expected $ "the text '" <> str <> "' (case sensitive)")
+
+-- TODO: line
+-- TODO: date
+-- TODO: time
+-- TODO: datetime
+-- TODO: email
+-- TODO: unixPath
+-- TODO: windowsPath
+-- TODO: uri
+-- TODO: IPv4
+-- TODO: IPv6
+-- PROGRAMMING LANGUAGES
+-- TODO: identifier
+-- TODO: intBin
+-- TODO: intOct
+-- TODO: intHex
+-- TODO: intExp
+-- TODO: numberExp
+-- TODO: quotedText
+-- TODO: collection

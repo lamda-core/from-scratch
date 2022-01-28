@@ -24,6 +24,11 @@ parserTests = describe "--== Parser ==--" $ do
       parse' "abc" (succeed True |> orElse (succeed False)) `shouldBe` Right True
       parse' "abc" (expected "something" |> orElse (succeed False)) `shouldBe` Right False
 
+    it "☯ oneOf" $ do
+      parse' "abc" (oneOf [] :: Parser ()) `shouldBe` Left "something"
+      parse' "abc" (oneOf [char 'a']) `shouldBe` Right 'a'
+      parse' "abc" (oneOf [char 'b', char 'a']) `shouldBe` Right 'a'
+
   describe "☯ Single characters" $ do
     it "☯ anyChar" $ do
       parse' "abc" anyChar `shouldBe` Right 'a'
@@ -75,6 +80,10 @@ parserTests = describe "--== Parser ==--" $ do
       parse' "A" (charCaseSensitive 'a') `shouldBe` Left "the character 'a' (case sensitive)"
 
   describe "☯ Sequences" $ do
+    it "☯ optional" $ do
+      parse' "abc!" (optional letter) `shouldBe` Right (Just 'a')
+      parse' "_bc!" (optional letter) `shouldBe` Right Nothing
+
     it "☯ zeroOrOne" $ do
       parse' "abc!" (zeroOrOne letter) `shouldBe` Right ['a']
       parse' "_bc!" (zeroOrOne letter) `shouldBe` Right []
@@ -90,3 +99,37 @@ parserTests = describe "--== Parser ==--" $ do
     it "☯ chain" $ do
       parse' "_A5" (chain [] :: Parser [()]) `shouldBe` Right []
       parse' "_A5" (chain [char '_', letter, digit]) `shouldBe` Right ['_', 'A', '5']
+
+    it "☯ exactly" $ do
+      parse' "aaa" (exactly 2 (char 'a')) `shouldBe` Right "aa"
+      parse' "abc" (exactly 2 (char 'a')) `shouldBe` Left "the character 'a'"
+
+    it "☯ atLeast" $ do
+      parse' "aaa" (atLeast 2 (char 'a')) `shouldBe` Right "aaa"
+      parse' "abc" (atLeast 2 (char 'a')) `shouldBe` Left "the character 'a'"
+
+    it "☯ atMost" $ do
+      parse' "aaa" (atMost 2 (char 'a')) `shouldBe` Right "aa"
+      parse' "abc" (atMost 2 (char 'a')) `shouldBe` Right "a"
+
+    it "☯ between" $ do
+      parse' "aaa" (between 1 2 (char 'a')) `shouldBe` Right "aa"
+      parse' "abc" (between 1 2 (char 'a')) `shouldBe` Right "a"
+      parse' "_" (between 1 2 (char 'a')) `shouldBe` Left "the character 'a'"
+
+  describe "☯ Common" $ do
+    it "☯ integer" $ do
+      parse' "11" integer `shouldBe` Right 11
+      parse' "a" integer `shouldBe` Left "an integer value like 123"
+
+    it "☯ number" $ do
+      parse' "3.14" number `shouldBe` Right 3.14
+      parse' "3." number `shouldBe` Left "a fractional number like 3.14"
+
+    it "☯ text" $ do
+      parse' "Hello" (text "hello") `shouldBe` Right "Hello"
+      parse' "H" (text "hello") `shouldBe` Left "the text 'hello'"
+
+    it "☯ textCaseSensitive" $ do
+      parse' "hello" (textCaseSensitive "hello") `shouldBe` Right "hello"
+      parse' "Hello" (textCaseSensitive "hello") `shouldBe` Left "the text 'hello' (case sensitive)"
