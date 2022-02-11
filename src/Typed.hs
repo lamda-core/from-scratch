@@ -11,12 +11,19 @@ data Expr
   | Int Int
   | Var String
   | Typ [String]
+  | Or [Expr]
   | For String Expr
   | Ann Expr Typ
   | Fun Typ Typ
+  | Lam Pattern Expr
   | App Expr Expr
-  | Lam [(Pattern, Expr)]
+  | Add
+  | Sub
+  | Mul
   deriving (Eq, Show)
+
+binaryOperators :: [Expr]
+binaryOperators = [Add, Sub, Mul]
 
 type Typ = Expr
 
@@ -50,6 +57,18 @@ get x env = vars env !? x
 set :: String -> Expr -> Env -> Env
 set x t env = env {vars = Map.insert x t (vars env)}
 
+app :: Expr -> [Expr] -> Expr
+app = foldl App
+
+add :: Expr -> Expr -> Expr
+add a b = app Add [a, b]
+
+sub :: Expr -> Expr -> Expr
+sub a b = app Sub [a, b]
+
+mul :: Expr -> Expr -> Expr
+mul a b = app Mul [a, b]
+
 -- TODO: FIX THIS
 defineType :: String -> [Typ] -> [(String, Typ)] -> Env -> Env
 defineType name args ctrs env = do
@@ -57,26 +76,55 @@ defineType name args ctrs env = do
   let defineCtr env' (x, t) = set x t env'
   foldl defineCtr (set name kind env) ctrs
 
-eval :: Expr -> Env -> Expr
-eval (Var x) env = case get x env of
-  Just (Ann (Var x') _) | x == x' -> Var x
-  Just a | a /= Var x -> eval a env
-  _ -> Var x
-eval (For x a) env = For x (eval a (set x (Var x) env))
-eval (Ann a _) env = eval a env
-eval (Fun a b) env = Fun (eval a env) (eval b env)
-eval (Lam alts) env = Lam (map (\(p, a) -> (eval p env, a)) alts)
-eval (App a b) env = case eval a env of
-  Lam alts -> match b alts env
-  a' | a == a' -> App a (eval b env)
-  a -> eval (App a b) env
-eval a _ = a
+match :: Pattern -> Expr -> Env -> Maybe Env
+match Any _ env = Just env
+match (Var x) a env = do
+  p <- get x env
+  if p == Var x then Just (set x a env) else match p a env
+match (Or (p : ps)) a env = case match p a env of
+  Just env -> Just env
+  Nothing -> match (Or ps) a env
+match (For x p) a env = match p a (set x (Var x) env)
+-- TODO: Ann Expr Typ -- should typecheck
+match pattern (Var x) env = do
+  a <- get x env
+  match pattern a env
+match (Fun p q) (Fun a b) env = do
+  env <- match p a env
+  match q b env
+match (App p q) (App a b) env = do
+  env <- match p a env
+  match q b env
+match p a env | p == a = Just env
+match _ _ _ = Nothing
 
-match :: Expr -> [(Pattern, Expr)] -> Env -> Expr
-match _ [] _ = Any
-match a ((p, b) : alts) env = case unify p (eval a env) env of
-  Right (_, env) -> eval b env
-  Left _ -> match a alts env
+-- | Reduces an expression to Weak Head Normal Form.
+reduce :: Expr -> Env -> Expr
+reduce (Var x) env = case get x env of
+  Just a -> a
+  Nothing -> Var x
+reduce (Ann a _) env = reduce a env
+reduce (Or (a : _)) env = reduce a env
+reduce (App (Lam pattern body) arg) env = reduce (App (Or [Lam pattern body]) arg) env
+reduce (App (Or (Lam pattern body : bs)) arg) env = case match pattern arg env of
+  Just env -> reduce body env
+  Nothing -> reduce (App (Or bs) arg) env
+reduce (App (App op a) b) env | op `elem` binaryOperators =
+  case (op, reduce a env, reduce b env) of
+    (Add, Int k1, Int k2) -> Int (k1 + k2)
+    (Sub, Int k1, Int k2) -> Int (k1 - k2)
+    (Mul, Int k1, Int k2) -> Int (k1 * k2)
+    (_, a, b) -> App (App op a) b
+reduce (App a b) env = case reduce a env of
+  a' | a == a' -> App a b
+  a -> reduce (App a b) env
+reduce a _ = a
+
+-- | Evaluates an expression to Normal Form.
+eval :: Expr -> Env -> Expr
+eval expr env = case reduce expr env of
+  App a b -> App a (eval b env)
+  a -> a
 
 typecheck :: Expr -> Env -> Either Error (Typ, Env)
 typecheck Any env = Right (Any, env)
@@ -91,6 +139,11 @@ typecheck (Var x) env = case get x env of
   Just a -> typecheck a env
   Nothing -> Left (UndefinedName x)
 typecheck (Typ _) env = Right (Typ [], env)
+typecheck (Or []) env = Right (Any, env)
+typecheck (Or (a : bs)) env = do
+  (ta, env) <- typecheck a env
+  (tb, env) <- typecheck (Or bs) env
+  unify ta tb env
 typecheck (For x a) env = typecheck a (set x (Var x) env)
 typecheck (Ann a t) env = do
   (ta, env) <- typecheck a env
@@ -99,18 +152,19 @@ typecheck (Fun a b) env = do
   (ta, env) <- typecheck a env
   (tb, env) <- typecheck b env
   Right (Fun (eval ta env) tb, env)
-typecheck (Lam []) env = Right (Fun Any Any, env)
-typecheck (Lam ((p, a) : alts)) env = do
+typecheck (Lam p a) env = do
   (tp, env) <- typecheck p env
   (ta, env) <- typecheck a env
-  (ts, env) <- typecheck (Lam alts) env
-  unify (Fun tp ta) ts env
+  Right (Fun tp ta, env)
 typecheck (App a b) env = do
   (ta, env) <- typecheck a env
   (tb, env) <- typecheck b env
   let (x, env') = newVar env
   (_, env') <- unify (eval ta env') (Fun tb (Var x)) env'
   Right (eval (Var x) env', env)
+typecheck Add env = Right (instantiate (For "a" $ Fun (Var "a") $ Fun (Var "a") (Var "a")) env)
+typecheck Sub env = Right (instantiate (For "a" $ Fun (Var "a") $ Fun (Var "a") (Var "a")) env)
+typecheck Mul env = Right (instantiate (For "a" $ Fun (Var "a") $ Fun (Var "a") (Var "a")) env)
 
 unify :: Expr -> Expr -> Env -> Either Error (Expr, Env)
 unify Any b env = Right (b, env)
@@ -136,7 +190,7 @@ occurs :: String -> Expr -> Bool
 occurs x (Var x') = x == x'
 occurs x (Ann a b) = occurs x a || occurs x b
 occurs x (Fun a b) = occurs x a || occurs x b
-occurs x (Lam ((p, a) : alts)) = (not (occurs x p) && occurs x a) || occurs x (Lam alts)
+-- occurs x (Lam ((p, a) : alts)) = (not (occurs x p) && occurs x a) || occurs x (Lam alts)
 occurs x (App a b) = occurs x a || occurs x b
 occurs _ _ = False
 

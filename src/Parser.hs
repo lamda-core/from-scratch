@@ -8,7 +8,7 @@ data State = State
   { source :: String,
     remaining :: String,
     lastChar :: Maybe Char,
-    token :: Token,
+    current :: Token,
     stack :: [Token]
   }
   deriving (Eq, Show)
@@ -60,7 +60,7 @@ parse source (Parser p) = do
           { source = source,
             remaining = source,
             lastChar = Nothing,
-            token = Token {name = "", row = 1, col = 1},
+            current = Token {name = "", row = 1, col = 1},
             stack = []
           }
   fmap fst (p initialState)
@@ -88,13 +88,13 @@ oneOf (p : ps) = p |> orElse (oneOf ps)
 
 anyChar :: Parser Char
 anyChar =
-  let advance state@State {remaining = ch : remaining, token = tok} =
+  let advance state@State {remaining = ch : remaining, current = tok} =
         Right
           ( ch,
             state
               { remaining = remaining,
                 lastChar = Just ch,
-                token =
+                current =
                   if ch == '\n'
                     then tok {row = row tok + 1, col = 1}
                     else tok {col = col tok + 1}
@@ -207,6 +207,12 @@ between min max parser = do
 -- TODO: splitWithDelimiters
 
 -- Common
+token :: Parser a -> Parser a
+token parser = do
+  x <- parser
+  _ <- zeroOrMore space
+  succeed x
+
 integer :: Parser Int
 integer =
   do
