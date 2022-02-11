@@ -207,8 +207,8 @@ between min max parser = do
 -- TODO: splitWithDelimiters
 
 -- Common
-tok :: Parser a -> Parser a
-tok parser = do
+token :: Parser a -> Parser a
+token parser = do
   x <- parser
   _ <- zeroOrMore space
   succeed x
@@ -224,13 +224,9 @@ number :: Parser Float
 number =
   do
     int <- oneOrMore digit
-    oneOf
-      [ do
-          _ <- char '.'
-          fraction <- oneOrMore digit
-          succeed (read $ concat [int, ['.'], fraction]),
-        do succeed (read int)
-      ]
+    _ <- char '.'
+    fraction <- oneOrMore digit
+    succeed (read $ concat [int, ['.'], fraction])
     |> orElse (expected "a fractional number like 3.14")
 
 text :: String -> Parser String
@@ -262,32 +258,3 @@ textCaseSensitive str =
 -- TODO: numberExp
 -- TODO: quotedText
 -- TODO: collection
-
--- Operator precedence
-expression :: Parser (Int, a) -> Parser (Int, a -> a) -> Parser a
-expression prefix infix' = do
-  (lbp, lhs) <- prefix
-  (rbp, rhs) <- infix'
-  if rbp < lbp
-    then expression (succeed (rbp, rhs lhs)) infix'
-    else succeed lhs
-
--- unaryExpr :: Parser (Int, a -> a -> a) -> Parser (Int, a -> a) -> Parser a -> Parser (Int, a)
--- unaryExpr binary unary term =
---   do
---     (rbp, op) <- unary
---     rhs <- expr binary unary term
---     succeed (rbp, op rhs)
---     |> orElse (fmap (\x -> (0, x)) term)
-
--- binaryExpr :: Parser (Int, a -> a -> a) -> Parser (Int, a -> a) -> Parser a -> Parser (Int, a)
--- binaryExpr binary unary term = do
---   (rbp, lhs) <- unaryExpr
-
--- expr :: Parser (Int, a -> a -> a) -> Parser (Int, a -> a) -> Parser a -> Parser a
--- expr binary unary term = do
---   (rbp, lhs) <- unaryExpr unary term
---   do
---     rhs <- expr binary unary term
---     succeed lhs
---     |> orElse (succeed lhs)
