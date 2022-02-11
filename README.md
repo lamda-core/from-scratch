@@ -2,16 +2,10 @@
 
 ## Before you begin
 
-> TODO: update this to Haskell using `ghcup`
-
-Make sure you have [PureScript](https://www.purescript.org) with `spago` installed:
-
-```sh
-npm install -g purescript spago
-```
+Use [GHCup](https://www.haskell.org/ghcup/) to install Haskell and `stack`.
 
 ## Running tests
 
 ```sh
-spago test
+stack test
 ```
