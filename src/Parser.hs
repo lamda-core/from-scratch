@@ -8,7 +8,7 @@ data State = State
   { source :: String,
     remaining :: String,
     lastChar :: Maybe Char,
-    token :: Token,
+    current :: Token,
     stack :: [Token]
   }
   deriving (Eq, Show)
@@ -60,7 +60,7 @@ parse source (Parser p) = do
           { source = source,
             remaining = source,
             lastChar = Nothing,
-            token = Token {name = "", row = 1, col = 1},
+            current = Token {name = "", row = 1, col = 1},
             stack = []
           }
   fmap fst (p initialState)
@@ -88,13 +88,13 @@ oneOf (p : ps) = p |> orElse (oneOf ps)
 
 anyChar :: Parser Char
 anyChar =
-  let advance state@State {remaining = ch : remaining, token = tok} =
+  let advance state@State {remaining = ch : remaining, current = tok} =
         Right
           ( ch,
             state
               { remaining = remaining,
                 lastChar = Just ch,
-                token =
+                current =
                   if ch == '\n'
                     then tok {row = row tok + 1, col = 1}
                     else tok {col = col tok + 1}
@@ -207,6 +207,12 @@ between min max parser = do
 -- TODO: splitWithDelimiters
 
 -- Common
+tok :: Parser a -> Parser a
+tok parser = do
+  x <- parser
+  _ <- zeroOrMore space
+  succeed x
+
 integer :: Parser Int
 integer =
   do
@@ -218,9 +224,13 @@ number :: Parser Float
 number =
   do
     int <- oneOrMore digit
-    _ <- char '.'
-    fraction <- oneOrMore digit
-    succeed (read $ concat [int, ['.'], fraction])
+    oneOf
+      [ do
+          _ <- char '.'
+          fraction <- oneOrMore digit
+          succeed (read $ concat [int, ['.'], fraction]),
+        do succeed (read int)
+      ]
     |> orElse (expected "a fractional number like 3.14")
 
 text :: String -> Parser String
@@ -252,3 +262,32 @@ textCaseSensitive str =
 -- TODO: numberExp
 -- TODO: quotedText
 -- TODO: collection
+
+-- Operator precedence
+expression :: Parser (Int, a) -> Parser (Int, a -> a) -> Parser a
+expression prefix infix' = do
+  (lbp, lhs) <- prefix
+  (rbp, rhs) <- infix'
+  if rbp < lbp
+    then expression (succeed (rbp, rhs lhs)) infix'
+    else succeed lhs
+
+-- unaryExpr :: Parser (Int, a -> a -> a) -> Parser (Int, a -> a) -> Parser a -> Parser (Int, a)
+-- unaryExpr binary unary term =
+--   do
+--     (rbp, op) <- unary
+--     rhs <- expr binary unary term
+--     succeed (rbp, op rhs)
+--     |> orElse (fmap (\x -> (0, x)) term)
+
+-- binaryExpr :: Parser (Int, a -> a -> a) -> Parser (Int, a -> a) -> Parser a -> Parser (Int, a)
+-- binaryExpr binary unary term = do
+--   (rbp, lhs) <- unaryExpr
+
+-- expr :: Parser (Int, a -> a -> a) -> Parser (Int, a -> a) -> Parser a -> Parser a
+-- expr binary unary term = do
+--   (rbp, lhs) <- unaryExpr unary term
+--   do
+--     rhs <- expr binary unary term
+--     succeed lhs
+--     |> orElse (succeed lhs)

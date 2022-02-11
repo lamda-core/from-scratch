@@ -124,7 +124,8 @@ parserTests = describe "--== Parser ==--" $ do
 
     it "☯ number" $ do
       parse' "3.14" number `shouldBe` Right 3.14
-      parse' "3." number `shouldBe` Left "a fractional number like 3.14"
+      parse' "3" number `shouldBe` Right 3.0
+      parse' "a" number `shouldBe` Left "a fractional number like 3.14"
 
     it "☯ text" $ do
       parse' "Hello" (text "hello") `shouldBe` Right "Hello"
@@ -133,3 +134,30 @@ parserTests = describe "--== Parser ==--" $ do
     it "☯ textCaseSensitive" $ do
       parse' "hello" (textCaseSensitive "hello") `shouldBe` Right "hello"
       parse' "Hello" (textCaseSensitive "hello") `shouldBe` Left "the text 'hello' (case sensitive)"
+
+-- it "☯ withOperatorPrecedence" $ do
+--   let calculator =
+--         withOperatorPrecedence
+--           []
+--           number
+--   parse' "1" calculator `shouldBe` Right 1.0
+--   parse' "1+2" calculator `shouldBe` Right 3.0
+
+-- it "☯ leftBoundExpression" $ do
+--   let term :: Parser Float
+--       term = number
+--   let unary :: Parser (Int, Float -> Float)
+--       unary =
+--         oneOf
+--           [ fmap (const (0, \x -> - x)) (char '-')
+--           ]
+--   let binary :: Parser (Int, Float -> Float -> Float)
+--       binary =
+--         oneOf
+--           [ fmap (const (10, (+))) (char '+'),
+--             fmap (const (20, (*))) (char '*')
+--           ]
+
+--   parse "1" (unaryExpr unary term) `shouldBe` Right (0, 1.0)
+--   parse "-1" (unaryExpr unary term) `shouldBe` Right (0, -1.0)
+--   parse "--1" (unaryExpr unary term) `shouldBe` Right (0, 1.0)
