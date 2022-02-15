@@ -98,33 +98,28 @@ match (App p q) (App a b) env = do
 match p a env | p == a = Just env
 match _ _ _ = Nothing
 
--- | Reduces an expression to Weak Head Normal Form.
-reduce :: Expr -> Env -> Expr
-reduce (Var x) env = case get x env of
+eval :: Expr -> Env -> Expr
+eval (Var x) env = case get x env of
   Just a -> a
   Nothing -> Var x
-reduce (Ann a _) env = reduce a env
-reduce (Or (a : _)) env = reduce a env
-reduce (App (Lam pattern body) arg) env = reduce (App (Or [Lam pattern body]) arg) env
-reduce (App (Or (Lam pattern body : bs)) arg) env = case match pattern arg env of
-  Just env -> reduce body env
-  Nothing -> reduce (App (Or bs) arg) env
-reduce (App (App op a) b) env | op `elem` binaryOperators =
-  case (op, reduce a env, reduce b env) of
+eval (Ann a _) env = eval a env
+eval (Or (a : _)) env = eval a env
+eval (App (Lam pattern body) arg) env = eval (App (Or [Lam pattern body]) arg) env
+eval (App (Or []) arg) env = App (Or []) (eval arg env)
+eval (App (Or (Lam pattern body : bs)) arg) env = case match pattern arg env of
+  Just env -> eval body env
+  Nothing -> eval (App (Or bs) arg) env
+eval (App (App op a) b) env | op `elem` binaryOperators =
+  case (op, eval a env, eval b env) of
     (Add, Int k1, Int k2) -> Int (k1 + k2)
     (Sub, Int k1, Int k2) -> Int (k1 - k2)
     (Mul, Int k1, Int k2) -> Int (k1 * k2)
     (_, a, b) -> App (App op a) b
-reduce (App a b) env = case reduce a env of
-  a' | a == a' -> App a b
-  a -> reduce (App a b) env
-reduce a _ = a
-
--- | Evaluates an expression to Normal Form.
-eval :: Expr -> Env -> Expr
-eval expr env = case reduce expr env of
-  App a b -> App a (eval b env)
-  a -> a
+eval (App a b) env = case eval a env of
+  a@(Or _) -> eval (App a b) env
+  a@(Lam _ _) -> eval (App a b) env
+  a -> App a (eval b env)
+eval a _ = a
 
 typecheck :: Expr -> Env -> Either Error (Typ, Env)
 typecheck Any env = Right (Any, env)

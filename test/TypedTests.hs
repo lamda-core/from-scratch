@@ -68,31 +68,26 @@ typedTests = describe "--== Typed ==--" $ do
     match (App (Var "x") (Var "y")) (App Tup IntT) (fromList [("x", Var "x"), ("y", Var "y")]) `shouldBe` Just (fromList [("x", Tup), ("y", IntT)])
     match (App (Var "x") (Var "y")) (Var "z") (fromList [("x", Var "x"), ("y", Var "y"), ("z", App Tup IntT)]) `shouldBe` Just (fromList [("x", Tup), ("y", IntT), ("z", App Tup IntT)])
 
-  it "☯ reduce" $ do
-    let (i0, i1, i2, i3, x) = (Int 0, Int 1, Int 2, Int 3, Var "x")
-    reduce (add i1 i1) empty `shouldBe` i2
-    reduce (sub i1 i1) empty `shouldBe` i0
-    reduce (mul i1 i1) empty `shouldBe` i1
-    reduce x empty `shouldBe` x
-    reduce x (fromList [("x", i1)]) `shouldBe` i1
-    reduce (add x x) (fromList [("x", i1)]) `shouldBe` i2
-    reduce (Or []) empty `shouldBe` Or []
-    reduce (Or [add i1 i1, add i2 i2]) empty `shouldBe` i2
-    reduce (Ann (add i1 i1) IntT) empty `shouldBe` i2
-    reduce (App x (add i1 i1)) empty `shouldBe` App x (add i1 i1)
-    reduce (App x (add i1 i1)) (fromList [("x", Tup)]) `shouldBe` App Tup (add i1 i1)
-    reduce (App (Ann x (Fun Tup IntT)) Tup) empty `shouldBe` App x Tup
-    reduce (App (Lam i1 i2) i3) empty `shouldBe` App (Or []) i3
-    reduce (App (Lam i1 i2) x) (fromList [("x", i1)]) `shouldBe` i2
-    reduce (App (Lam (For "x" x) (add x x)) i1) empty `shouldBe` i2
-    reduce (App (Or []) i1) empty `shouldBe` App (Or []) i1
-    reduce (App (Or [Lam i1 i2, Lam Any i3]) i1) empty `shouldBe` i2
-    reduce (App (Or [Lam i1 i2, Lam Any i3]) i0) empty `shouldBe` i3
-    reduce (App (App x (add i1 i1)) (add i2 i2)) (fromList [("x", Tup)]) `shouldBe` App (App Tup (add i1 i1)) (add i2 i2)
-
   it "☯ eval" $ do
-    let (i1, i2) = (Int 1, Int 2)
-    eval (App Tup (add i1 i1)) empty `shouldBe` App Tup i2
+    let (i0, i1, i2, i3, x) = (Int 0, Int 1, Int 2, Int 3, Var "x")
+    eval (add i1 i1) empty `shouldBe` i2
+    eval (sub i1 i1) empty `shouldBe` i0
+    eval (mul i1 i1) empty `shouldBe` i1
+    eval x empty `shouldBe` x
+    eval x (fromList [("x", i1)]) `shouldBe` i1
+    eval (add x x) (fromList [("x", i1)]) `shouldBe` i2
+    eval (Or []) empty `shouldBe` Or []
+    eval (Or [add i1 i1, add i2 i2]) empty `shouldBe` i2
+    eval (Ann (add i1 i1) IntT) empty `shouldBe` i2
+    eval (App x (add i1 i1)) (fromList [("x", Tup)]) `shouldBe` App Tup i2
+    eval (App (Ann x (Fun Tup IntT)) Tup) empty `shouldBe` App x Tup
+    eval (App (Lam i1 i2) i3) empty `shouldBe` App (Or []) i3
+    eval (App (Lam i1 i2) x) (fromList [("x", i1)]) `shouldBe` i2
+    eval (App (Lam (For "x" x) (add x x)) i1) empty `shouldBe` i2
+    eval (App (Or []) i1) empty `shouldBe` App (Or []) i1
+    eval (App (Or [Lam i1 i2, Lam Any i3]) i1) empty `shouldBe` i2
+    eval (App (Or [Lam i1 i2, Lam Any i3]) i0) empty `shouldBe` i3
+    eval (App (App x (add i1 i1)) (add i1 i2)) (fromList [("x", Tup)]) `shouldBe` App (App Tup i2) i3
 
   -- typecheck' (App (Lam []) (Int 1)) empty `shouldBe` Right (Var "a")
   -- typecheck' (App (Lam [(Tup, Int 1)]) (Int 2)) empty `shouldBe` Left (CannotUnify Tup IntT)
