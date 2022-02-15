@@ -146,14 +146,8 @@ optional parser = fmap Just parser |> orElse (succeed Nothing)
 zeroOrOne :: Parser a -> Parser [a]
 zeroOrOne parser = fmap (: []) parser |> orElse (succeed [])
 
--- TODO: rewrite with `fold`
 zeroOrMore :: Parser a -> Parser [a]
-zeroOrMore parser =
-  do
-    x <- parser
-    xs <- zeroOrMore parser
-    succeed (x : xs)
-    |> orElse (succeed [])
+zeroOrMore = foldR (:) []
 
 oneOrMore :: Parser a -> Parser [a]
 oneOrMore parser = do
@@ -178,7 +172,6 @@ atLeast min parser = do
   xs <- atLeast (min - 1) parser
   succeed (x : xs)
 
--- TODO: rewrite with `fold`
 atMost :: Int -> Parser a -> Parser [a]
 atMost max _ | max <= 0 = succeed []
 atMost max parser =
@@ -195,12 +188,22 @@ between min max parser = do
   xs <- between (min - 1) (max - 1) parser
   succeed (x : xs)
 
-fold :: (b -> a -> b) -> b -> Parser a -> Parser b
-fold f y parser =
+-- TODO: add tests
+foldL :: (b -> a -> b) -> b -> Parser a -> Parser b
+foldL f initial parser =
   do
     x <- parser
-    succeed (f y x)
-    |> orElse (succeed y)
+    foldL f (f initial x) parser
+    |> orElse (succeed initial)
+
+-- TODO: add tests
+foldR :: (a -> b -> b) -> b -> Parser a -> Parser b
+foldR f final parser =
+  do
+    x <- parser
+    y <- foldR f final parser
+    succeed (f x y)
+    |> orElse (succeed final)
 
 -- TODO: until
 -- TODO: split
