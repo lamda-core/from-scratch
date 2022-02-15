@@ -71,6 +71,9 @@ succeed value = Parser (\state -> Right (value, state))
 expected :: String -> Parser a
 expected message = Parser (Left . Error message)
 
+assert :: Bool -> String -> Parser ()
+assert check message = if check then succeed () else expected message
+
 orElse :: Parser a -> Parser a -> Parser a
 orElse (Parser else') (Parser p) = do
   Parser
@@ -81,7 +84,7 @@ orElse (Parser else') (Parser p) = do
     )
 
 oneOf :: [Parser a] -> Parser a
-oneOf [] = expected "something"
+oneOf [] = expected ""
 oneOf (p : ps) = p |> orElse (oneOf ps)
 
 -- Single characters
@@ -103,50 +106,38 @@ anyChar =
       advance state = Left (Error "a character" state)
    in Parser advance
 
-space :: Parser Char
-space = do
+charIf :: (Char -> Bool) -> String -> Parser Char
+charIf condition message = do
   ch <- anyChar
-  if Char.isSpace ch then succeed ch else expected "a blank space"
+  _ <- assert (condition ch) message
+  succeed ch
+
+space :: Parser Char
+space = charIf Char.isSpace "a blank space"
 
 letter :: Parser Char
-letter = do
-  ch <- anyChar
-  if Char.isLetter ch then succeed ch else expected "a letter"
+letter = charIf Char.isLetter "a letter"
 
 lower :: Parser Char
-lower = do
-  ch <- anyChar
-  if Char.isLower ch then succeed ch else expected "a lowercase letter"
+lower = charIf Char.isLower "a lowercase letter"
 
 upper :: Parser Char
-upper = do
-  ch <- anyChar
-  if Char.isUpper ch then succeed ch else expected "an uppercase letter"
+upper = charIf Char.isUpper "an uppercase letter"
 
 digit :: Parser Char
-digit = do
-  ch <- anyChar
-  if Char.isDigit ch then succeed ch else expected "a digit from 0 to 9"
+digit = charIf Char.isDigit "a digit from 0 to 9"
 
 alphanumeric :: Parser Char
-alphanumeric = do
-  ch <- anyChar
-  if Char.isAlphaNum ch then succeed ch else expected "a letter or digit"
+alphanumeric = charIf Char.isAlphaNum "a letter or digit"
 
 punctuation :: Parser Char
-punctuation = do
-  ch <- anyChar
-  if Char.isPunctuation ch then succeed ch else expected "a punctuation character"
+punctuation = charIf Char.isPunctuation "a punctuation character"
 
 char :: Char -> Parser Char
-char c = do
-  ch <- anyChar
-  if Char.toLower c == Char.toLower ch then succeed ch else expected $ "the character '" <> [c] <> "'"
+char c = charIf (\ch -> Char.toLower c == Char.toLower ch) ("the character '" <> [c] <> "'")
 
 charCaseSensitive :: Char -> Parser Char
-charCaseSensitive c = do
-  ch <- anyChar
-  if c == ch then succeed ch else expected $ "the character '" <> [c] <> "' (case sensitive)"
+charCaseSensitive c = charIf (== c) ("the character '" <> [c] <> "' (case sensitive)")
 
 -- Sequences
 optional :: Parser a -> Parser (Maybe a)
@@ -155,6 +146,7 @@ optional parser = fmap Just parser |> orElse (succeed Nothing)
 zeroOrOne :: Parser a -> Parser [a]
 zeroOrOne parser = fmap (: []) parser |> orElse (succeed [])
 
+-- TODO: rewrite with `fold`
 zeroOrMore :: Parser a -> Parser [a]
 zeroOrMore parser =
   do
@@ -186,6 +178,7 @@ atLeast min parser = do
   xs <- atLeast (min - 1) parser
   succeed (x : xs)
 
+-- TODO: rewrite with `fold`
 atMost :: Int -> Parser a -> Parser [a]
 atMost max _ | max <= 0 = succeed []
 atMost max parser =
@@ -201,6 +194,13 @@ between min max parser = do
   x <- parser
   xs <- between (min - 1) (max - 1) parser
   succeed (x : xs)
+
+fold :: (b -> a -> b) -> b -> Parser a -> Parser b
+fold f y parser =
+  do
+    x <- parser
+    succeed (f y x)
+    |> orElse (succeed y)
 
 -- TODO: until
 -- TODO: split
@@ -224,10 +224,14 @@ number :: Parser Float
 number =
   do
     int <- oneOrMore digit
-    _ <- char '.'
-    fraction <- oneOrMore digit
-    succeed (read $ concat [int, ['.'], fraction])
-    |> orElse (expected "a fractional number like 3.14")
+    oneOf
+      [ do
+          _ <- char '.'
+          fraction <- oneOrMore digit
+          succeed (read $ concat [int, ['.'], fraction]),
+        do succeed (read int)
+      ]
+    |> orElse (expected "a number like 123 or 3.14")
 
 text :: String -> Parser String
 text str =
@@ -258,3 +262,45 @@ textCaseSensitive str =
 -- TODO: numberExp
 -- TODO: quotedText
 -- TODO: collection
+
+-- Operator precedence
+type Operator a = Int -> (Int -> Parser a) -> Parser (a, Int)
+
+term :: Parser a -> Operator a
+term parser prec _ = do
+  x <- parser
+  succeed (x, prec)
+
+prefix :: (a -> a) -> Parser op -> Operator a
+prefix f op prec expr = do
+  _ <- op
+  x <- expr prec
+  succeed (f x, prec)
+
+infixL :: Int -> (a -> a -> a) -> Parser op -> a -> Operator a
+infixL prec f op x lastPrec expr = do
+  _ <- assert (lastPrec < prec) ""
+  _ <- op
+  y <- expr prec
+  succeed (f x y, lastPrec)
+
+infixR :: Int -> (a -> a -> a) -> Parser op -> a -> Operator a
+infixR prec f op x lastPrec expr = do
+  _ <- assert (lastPrec <= prec) ""
+  _ <- op
+  y <- expr prec
+  succeed (f x y, lastPrec)
+
+expression :: [Int -> (Int -> Parser a) -> Parser (a, Int)] -> [a -> Int -> (Int -> Parser a) -> Parser (a, Int)] -> Parser a
+expression unaryOperators binaryOperators =
+  let unary rbp expr = oneOf (fmap (\op -> op rbp expr) unaryOperators)
+      binary x rbp expr = oneOf (fmap (\op -> op x rbp expr) binaryOperators)
+      expr rbp = do
+        (x, rbp) <- unary rbp expr
+        expr2 x rbp
+      expr2 x rbp =
+        do
+          (y, lbp) <- binary x rbp expr
+          expr2 y lbp
+          |> orElse (succeed x)
+   in expr 0

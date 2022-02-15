@@ -25,7 +25,7 @@ parserTests = describe "--== Parser ==--" $ do
       parse' "abc" (expected "something" |> orElse (succeed False)) `shouldBe` Right False
 
     it "☯ oneOf" $ do
-      parse' "abc" (oneOf [] :: Parser ()) `shouldBe` Left "something"
+      parse' "abc" (oneOf [] :: Parser ()) `shouldBe` Left ""
       parse' "abc" (oneOf [char 'a']) `shouldBe` Right 'a'
       parse' "abc" (oneOf [char 'b', char 'a']) `shouldBe` Right 'a'
 
@@ -124,7 +124,8 @@ parserTests = describe "--== Parser ==--" $ do
 
     it "☯ number" $ do
       parse' "3.14" number `shouldBe` Right 3.14
-      parse' "3." number `shouldBe` Left "a fractional number like 3.14"
+      parse' "3" number `shouldBe` Right 3.0
+      parse' "a" number `shouldBe` Left "a number like 123 or 3.14"
 
     it "☯ text" $ do
       parse' "Hello" (text "hello") `shouldBe` Right "Hello"
@@ -133,3 +134,23 @@ parserTests = describe "--== Parser ==--" $ do
     it "☯ textCaseSensitive" $ do
       parse' "hello" (textCaseSensitive "hello") `shouldBe` Right "hello"
       parse' "Hello" (textCaseSensitive "hello") `shouldBe` Left "the text 'hello' (case sensitive)"
+
+    it "☯ expression" $ do
+      let calculator =
+            expression
+              [ prefix (\x -> - x) (char '-'),
+                term number
+              ]
+              [ infixL 1 (+) (char '+'),
+                infixL 1 (-) (char '-'),
+                infixL 2 (*) (char '*'),
+                infixR 3 (**) (char '^')
+              ]
+      parse "1" calculator `shouldBe` Right 1.0
+      parse "-1" calculator `shouldBe` Right (-1.0)
+      parse "--1" calculator `shouldBe` Right 1.0
+      parse "1+2" calculator `shouldBe` Right 3.0
+      parse "1-2-3" calculator `shouldBe` Right (-4.0)
+      parse "1+2*3" calculator `shouldBe` Right 7.0
+      parse "3*2+1" calculator `shouldBe` Right 7.0
+      parse "2^2^3" calculator `shouldBe` Right 256.0
