@@ -3,7 +3,7 @@ module Typed where
 import Data.Char (chr, ord)
 import Data.Map (Map, member, (!?))
 import qualified Data.Map as Map
-import Parser (Parser, alphanumeric, char, infixL, infixR, integer, letter, oneOf, oneOrMore, prefix, space, succeed, term, text, zeroOrMore)
+import Parser (Parser, alphanumeric, char, inbetween, infixL, infixR, integer, letter, oneOf, oneOrMore, prefix, space, succeed, term, text, zeroOrMore)
 import qualified Parser
 
 data Expr
@@ -69,6 +69,35 @@ sub a b = app Sub [a, b]
 
 mul :: Expr -> Expr -> Expr
 mul a b = app Mul [a, b]
+
+expression :: Parser Expr
+expression = do
+  let name :: Parser String
+      name = do
+        x <- letter
+        xs <- zeroOrMore (oneOf [alphanumeric, char '_', char '\''])
+        succeed (x : xs)
+  Parser.expression
+    [ term (const Any) (char '_'),
+      term (const IntT) (text "$Int"),
+      term Int integer,
+      term Var name,
+      term Typ (do _ <- text "$Type"; zeroOrMore (do _ <- char '!'; name)),
+      term Or (oneOrMore (do _ <- char '|'; expression)),
+      term (const Tup) (text "()"),
+      term (const Add) (text "(+)"),
+      term (const Sub) (text "(-)"),
+      term (const Mul) (text "(*)"),
+      prefix For (do _ <- char '@'; x <- name; _ <- char '.'; succeed x),
+      inbetween (char '(') (char ')')
+    ]
+    [ infixR 1 (const Ann) (char ':'),
+      infixR 2 (const Lam) (text "->"),
+      infixL 3 (const add) (char '+'),
+      infixL 3 (const sub) (char '-'),
+      infixL 4 (const mul) (char '*'),
+      infixL 5 (const App) (oneOrMore space)
+    ]
 
 -- TODO: FIX THIS
 defineType :: String -> [Typ] -> [(String, Typ)] -> Env -> Env
@@ -237,34 +266,6 @@ intToName 0 = ""
 intToName i = do
   let (q, r) = quotRem (i - 1) 26
   chr (r + ord 'a') : intToName q
-
-expression :: Parser Expr
-expression = do
-  let name :: Parser String
-      name = do
-        x <- letter
-        xs <- zeroOrMore (oneOf [alphanumeric, char '_', char '\''])
-        succeed (x : xs)
-  Parser.expression
-    [ term (const Any) (char '_'),
-      term (const IntT) (text "$Int"),
-      term Int integer,
-      term Var name,
-      term Typ (do _ <- text "$Type"; zeroOrMore (do _ <- char '!'; name)),
-      term Or (oneOrMore (do _ <- char '|'; expression)),
-      term (const Tup) (text "()"),
-      term (const Add) (text "(+)"),
-      term (const Sub) (text "(-)"),
-      term (const Mul) (text "(*)"),
-      prefix For (do _ <- char '@'; x <- name; _ <- char '.'; succeed x)
-    ]
-    [ infixR 1 (const Ann) (char ':'),
-      infixR 2 (const Lam) (text "->"),
-      infixL 3 (const add) (text "+"),
-      infixL 3 (const sub) (text "-"),
-      infixL 4 (const mul) (text "*"),
-      infixL 5 (const App) (oneOrMore space)
-    ]
 
 -- alternatives :: Typ -> Env -> Either Error [Pattern]
 -- alternatives (Typ (x : xs)) env = do

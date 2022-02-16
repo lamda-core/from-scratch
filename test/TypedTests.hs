@@ -6,6 +6,73 @@ import Typed
 
 typedTests :: SpecWith ()
 typedTests = describe "--== Typed ==--" $ do
+  describe "☯ parser" $ do
+    let (x, y, z) = (Var "x", Var "y", Var "z")
+    it "☯ terms" $ do
+      parse "_" expression `shouldBe` Right Any
+      parse "()" expression `shouldBe` Right Tup
+      parse "$Int" expression `shouldBe` Right IntT
+      parse "42" expression `shouldBe` Right (Int 42)
+      parse "x" expression `shouldBe` Right x
+      parse "$Type" expression `shouldBe` Right (Typ [])
+      parse "$Type!True!False" expression `shouldBe` Right (Typ ["True", "False"])
+      parse "|x" expression `shouldBe` Right (Or [x])
+      parse "|x|y" expression `shouldBe` Right (Or [x, y])
+      parse "(+)" expression `shouldBe` Right Add
+      parse "(-)" expression `shouldBe` Right Sub
+      parse "(*)" expression `shouldBe` Right Mul
+
+    it "☯ unary operators" $ do
+      parse "@x.y" expression `shouldBe` Right (For "x" y)
+      parse "(x)" expression `shouldBe` Right x
+
+    it "☯ binary operators" $ do
+      parse "x:y" expression `shouldBe` Right (Ann x y)
+      parse "x->y" expression `shouldBe` Right (Lam x y)
+      parse "x+y" expression `shouldBe` Right (add x y)
+      parse "x-y" expression `shouldBe` Right (sub x y)
+      parse "x*y" expression `shouldBe` Right (mul x y)
+      parse "x y" expression `shouldBe` Right (App x y)
+
+    it "☯ operator precedence" $ do
+      parse "x:y:z" expression `shouldBe` Right (Ann x (Ann y z))
+      parse "x:y->z" expression `shouldBe` Right (Ann x (Lam y z))
+      parse "x:y+z" expression `shouldBe` Right (Ann x (add y z))
+      parse "x:y-z" expression `shouldBe` Right (Ann x (sub y z))
+      parse "x:y*z" expression `shouldBe` Right (Ann x (mul y z))
+      parse "x:y z" expression `shouldBe` Right (Ann x (App y z))
+      parse "x->y:z" expression `shouldBe` Right (Ann (Lam x y) z)
+      parse "x->y->z" expression `shouldBe` Right (Lam x (Lam y z))
+      parse "x->y+z" expression `shouldBe` Right (Lam x (add y z))
+      parse "x->y-z" expression `shouldBe` Right (Lam x (sub y z))
+      parse "x->y*z" expression `shouldBe` Right (Lam x (mul y z))
+      parse "x->y z" expression `shouldBe` Right (Lam x (App y z))
+      parse "x+y:z" expression `shouldBe` Right (Ann (add x y) z)
+      parse "x+y->z" expression `shouldBe` Right (Lam (add x y) z)
+      parse "x+y+z" expression `shouldBe` Right (add (add x y) z)
+      parse "x+y-z" expression `shouldBe` Right (sub (add x y) z)
+      parse "x+y*z" expression `shouldBe` Right (add x (mul y z))
+      parse "x+y z" expression `shouldBe` Right (add x (App y z))
+      parse "x-y:z" expression `shouldBe` Right (Ann (sub x y) z)
+      parse "x-y->z" expression `shouldBe` Right (Lam (sub x y) z)
+      parse "x-y+z" expression `shouldBe` Right (add (sub x y) z)
+      parse "x-y-z" expression `shouldBe` Right (sub (sub x y) z)
+      parse "x-y*z" expression `shouldBe` Right (sub x (mul y z))
+      parse "x-y z" expression `shouldBe` Right (sub x (App y z))
+      parse "x*y:z" expression `shouldBe` Right (Ann (mul x y) z)
+      parse "x*y->z" expression `shouldBe` Right (Lam (mul x y) z)
+      parse "x*y+z" expression `shouldBe` Right (add (mul x y) z)
+      parse "x*y-z" expression `shouldBe` Right (sub (mul x y) z)
+      parse "x*y*z" expression `shouldBe` Right (mul (mul x y) z)
+      parse "x*y z" expression `shouldBe` Right (mul x (App y z))
+      parse "x y:z" expression `shouldBe` Right (Ann (App x y) z)
+      parse "x y->z" expression `shouldBe` Right (Lam (App x y) z)
+      parse "x y+z" expression `shouldBe` Right (add (App x y) z)
+      parse "x y-z" expression `shouldBe` Right (sub (App x y) z)
+      parse "x y*z" expression `shouldBe` Right (mul (App x y) z)
+      parse "x y z" expression `shouldBe` Right (App (App x y) z)
+      parse "x (y z)" expression `shouldBe` Right (App x (App y z))
+
   it "☯ defineType" $ do
     -- TODO: FIX THIS!
     defineType "T" [] [] empty `shouldBe` fromList [("T", Typ [])]
@@ -143,29 +210,6 @@ typedTests = describe "--== Typed ==--" $ do
     typecheck' Add empty `shouldBe` Right (Lam (Var "a") $ Lam (Var "a") (Var "a"))
     typecheck' Sub empty `shouldBe` Right (Lam (Var "a") $ Lam (Var "a") (Var "a"))
     typecheck' Mul empty `shouldBe` Right (Lam (Var "a") $ Lam (Var "a") (Var "a"))
-
-  it "☯ parser" $ do
-    parse "_" expression `shouldBe` Right Any
-    parse "()" expression `shouldBe` Right Tup
-    parse "$Int" expression `shouldBe` Right IntT
-    parse "42" expression `shouldBe` Right (Int 42)
-    parse "x" expression `shouldBe` Right (Var "x")
-    parse "$Type" expression `shouldBe` Right (Typ [])
-    parse "$Type!True!False" expression `shouldBe` Right (Typ ["True", "False"])
-    parse "|1" expression `shouldBe` Right (Or [Int 1])
-    parse "|1|2" expression `shouldBe` Right (Or [Int 1, Int 2])
-    parse "(+)" expression `shouldBe` Right Add
-    parse "(-)" expression `shouldBe` Right Sub
-    parse "(*)" expression `shouldBe` Right Mul
-    parse "@x.x" expression `shouldBe` Right (For "x" (Var "x"))
-    parse "1:$Int" expression `shouldBe` Right (Ann (Int 1) IntT)
-    parse "()->$Int" expression `shouldBe` Right (Lam Tup IntT)
-    parse "1+2" expression `shouldBe` Right (add (Int 1) (Int 2))
-    parse "1-2" expression `shouldBe` Right (sub (Int 1) (Int 2))
-    parse "1*2" expression `shouldBe` Right (mul (Int 1) (Int 2))
-
--- it "☯ parser operator precedence" $ do
---   parse "1+2-3" expression `shouldBe` Right (add (Int 1) (sub (Int 2) (Int 3)))
 
 -- it "☯ alternatives" $ do
 --   let env = defineType "Maybe" [Var "a"] [("Just", Fun (Var "a") (App (Ctr "Maybe") (Var "a"))), ("Nothing", App (Ctr "Maybe") (Var "a"))] empty

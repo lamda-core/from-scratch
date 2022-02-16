@@ -280,6 +280,13 @@ prefix f op prec expr = do
   y <- expr prec
   succeed (f op' y, prec)
 
+inbetween :: Parser open -> Parser close -> Operator a
+inbetween open close prec expr = do
+  _ <- open
+  y <- expr 0
+  _ <- close
+  succeed (y, prec)
+
 infixL :: Int -> (op -> a -> a -> a) -> Parser op -> a -> Operator a
 infixL prec f op x lastPrec expr = do
   _ <- assert (lastPrec < prec) ""
