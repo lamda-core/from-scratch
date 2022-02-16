@@ -138,13 +138,13 @@ parserTests = describe "--== Parser ==--" $ do
     it "☯ expression" $ do
       let calculator =
             expression
-              [ prefix (\x -> - x) (char '-'),
-                term number
+              [ prefix (\_ x -> - x) (char '-'),
+                term id number
               ]
-              [ infixL 1 (+) (char '+'),
-                infixL 1 (-) (char '-'),
-                infixL 2 (*) (char '*'),
-                infixR 3 (**) (char '^')
+              [ infixL 1 (const (+)) (char '+'),
+                infixL 1 (const (-)) (char '-'),
+                infixL 2 (const (*)) (char '*'),
+                infixR 3 (const (**)) (char '^')
               ]
       parse "1" calculator `shouldBe` Right 1.0
       parse "-1" calculator `shouldBe` Right (-1.0)

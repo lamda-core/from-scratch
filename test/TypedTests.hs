@@ -1,5 +1,6 @@
 module TypedTests where
 
+import Parser (parse)
 import Test.Hspec
 import Typed
 
@@ -8,13 +9,13 @@ typedTests = describe "--== Typed ==--" $ do
   it "☯ defineType" $ do
     -- TODO: FIX THIS!
     defineType "T" [] [] empty `shouldBe` fromList [("T", Typ [])]
-    defineType "T" [Var "a", Var "b"] [] empty `shouldBe` fromList [("T", Fun (Var "a") $ Fun (Var "b") $ Typ [])]
-    -- defineType "T" [Var "a", Var "b"] [] empty `shouldBe` fromList [("T", For "a" $ For "b" $ Fun (Var "a") $ Fun (Var "b") $ Typ [])]
-    defineType "T" [] [("A", Var "T"), ("B", Fun IntT (Var "T"))] empty
+    defineType "T" [Var "a", Var "b"] [] empty `shouldBe` fromList [("T", Lam (Var "a") $ Lam (Var "b") $ Typ [])]
+    -- defineType "T" [Var "a", Var "b"] [] empty `shouldBe` fromList [("T", For "a" $ For "b" $ Lun (Var "a") $ Fun (Var "b") $ Typ [])]
+    defineType "T" [] [("A", Var "T"), ("B", Lam IntT (Var "T"))] empty
       `shouldBe` fromList
         [ ("T", Typ ["A", "B"]),
           ("A", Var "T"),
-          ("B", Fun IntT $ Var "T")
+          ("B", Lam IntT $ Var "T")
         ]
 
   it "☯ occurs" $ do
@@ -27,9 +28,9 @@ typedTests = describe "--== Typed ==--" $ do
     -- TODO: For
     -- TODO: Ann
     "x" `occurs` Typ ["x"] `shouldBe` False
-    "x" `occurs` Fun (Var "y") (Var "y") `shouldBe` False
-    "x" `occurs` Fun (Var "x") (Var "y") `shouldBe` True
-    "x" `occurs` Fun (Var "y") (Var "x") `shouldBe` True
+    "x" `occurs` Lam (Var "y") (Var "y") `shouldBe` False
+    "x" `occurs` Lam (Var "x") (Var "y") `shouldBe` True
+    "x" `occurs` Lam (Var "y") (Var "x") `shouldBe` True
     -- TODO: Lam
     "x" `occurs` App (Var "y") (Var "y") `shouldBe` False
     "x" `occurs` App (Var "x") (Var "y") `shouldBe` True
@@ -49,8 +50,8 @@ typedTests = describe "--== Typed ==--" $ do
     unify (Ann (Var "x") IntT) (Ann (Int 1) IntT) empty `shouldBe` Right (Ann (Int 1) IntT, fromList [("x", Int 1)])
     unify (Ann (Int 1) (Var "x")) (Ann (Int 1) IntT) empty `shouldBe` Right (Ann (Int 1) IntT, fromList [("x", IntT)])
     -- unify (Ann (Int 1) (Var "x")) (Int 1) empty `shouldBe` Right (Ann (Int 1) IntT, fromList [("x", IntT)])
-    unify (Fun (Var "x") IntT) (Fun Tup IntT) empty `shouldBe` Right (Fun Tup IntT, fromList [("x", Tup)])
-    unify (Fun Tup (Var "x")) (Fun Tup IntT) empty `shouldBe` Right (Fun Tup IntT, fromList [("x", IntT)])
+    unify (Lam (Var "x") IntT) (Lam Tup IntT) empty `shouldBe` Right (Lam Tup IntT, fromList [("x", Tup)])
+    unify (Lam Tup (Var "x")) (Lam Tup IntT) empty `shouldBe` Right (Lam Tup IntT, fromList [("x", IntT)])
 
   it "☯ match" $ do
     match Any Tup empty `shouldBe` Just empty
@@ -63,8 +64,8 @@ typedTests = describe "--== Typed ==--" $ do
     match (Or [IntT, Var "x"]) Tup (fromList [("x", Var "x")]) `shouldBe` Just (fromList [("x", Tup)])
     match (For "x" (Var "y")) Tup (fromList [("y", Var "y")]) `shouldBe` Just (fromList [("x", Var "x"), ("y", Tup)])
     -- match (Ann (Var "x") (Var "y")) (Int 1) empty `shouldBe` Just (fromList [("x", Int 1), ("y", IntT)])
-    match (Fun (Var "x") (Var "y")) (Fun Tup IntT) (fromList [("x", Var "x"), ("y", Var "y")]) `shouldBe` Just (fromList [("x", Tup), ("y", IntT)])
-    match (Fun (Var "x") (Var "y")) (Var "z") (fromList [("x", Var "x"), ("y", Var "y"), ("z", Fun Tup IntT)]) `shouldBe` Just (fromList [("x", Tup), ("y", IntT), ("z", Fun Tup IntT)])
+    match (Lam (Var "x") (Var "y")) (Lam Tup IntT) (fromList [("x", Var "x"), ("y", Var "y")]) `shouldBe` Just (fromList [("x", Tup), ("y", IntT)])
+    match (Lam (Var "x") (Var "y")) (Var "z") (fromList [("x", Var "x"), ("y", Var "y"), ("z", Lam Tup IntT)]) `shouldBe` Just (fromList [("x", Tup), ("y", IntT), ("z", Lam Tup IntT)])
     match (App (Var "x") (Var "y")) (App Tup IntT) (fromList [("x", Var "x"), ("y", Var "y")]) `shouldBe` Just (fromList [("x", Tup), ("y", IntT)])
     match (App (Var "x") (Var "y")) (Var "z") (fromList [("x", Var "x"), ("y", Var "y"), ("z", App Tup IntT)]) `shouldBe` Just (fromList [("x", Tup), ("y", IntT), ("z", App Tup IntT)])
 
@@ -80,7 +81,7 @@ typedTests = describe "--== Typed ==--" $ do
     eval (Or [add i1 i1, add i2 i2]) empty `shouldBe` i2
     eval (Ann (add i1 i1) IntT) empty `shouldBe` i2
     eval (App x (add i1 i1)) (fromList [("x", Tup)]) `shouldBe` App Tup i2
-    eval (App (Ann x (Fun Tup IntT)) Tup) empty `shouldBe` App x Tup
+    eval (App (Ann x (Lam Tup IntT)) Tup) empty `shouldBe` App x Tup
     eval (App (Lam i1 i2) i3) empty `shouldBe` App (Or []) i3
     eval (App (Lam i1 i2) x) (fromList [("x", i1)]) `shouldBe` i2
     eval (App (Lam (For "x" x) (add x x)) i1) empty `shouldBe` i2
@@ -88,10 +89,6 @@ typedTests = describe "--== Typed ==--" $ do
     eval (App (Or [Lam i1 i2, Lam Any i3]) i1) empty `shouldBe` i2
     eval (App (Or [Lam i1 i2, Lam Any i3]) i0) empty `shouldBe` i3
     eval (App (App x (add i1 i1)) (add i1 i2)) (fromList [("x", Tup)]) `shouldBe` App (App Tup i2) i3
-
-  -- typecheck' (App (Lam []) (Int 1)) empty `shouldBe` Right (Var "a")
-  -- typecheck' (App (Lam [(Tup, Int 1)]) (Int 2)) empty `shouldBe` Left (CannotUnify Tup IntT)
-  -- typecheck' (App (Lam [(Tup, Int 1)]) Tup) empty `shouldBe` Right IntT
 
   it "☯ intToName" $ do
     intToName 0 `shouldBe` ""
@@ -110,15 +107,15 @@ typedTests = describe "--== Typed ==--" $ do
     rename' "x" "y" (Ann (Var "x") (Var "x")) empty `shouldBe` Ann (Var "y") (Var "y")
     rename' "x" "y" (For "x" $ Ann (Var "x") (Var "y")) empty `shouldBe` For "x" (Ann (Var "x") (Var "y"))
     rename' "x" "y" (For "y" $ Ann (Var "x") (Var "y")) empty `shouldBe` For "a" (Ann (Var "y") (Var "a"))
-    rename' "x" "y" (Fun (Var "x") (Var "x")) empty `shouldBe` Fun (Var "y") (Var "y")
+    rename' "x" "y" (Lam (Var "x") (Var "x")) empty `shouldBe` Lam (Var "y") (Var "y")
     rename' "x" "y" (App (Var "x") (Var "x")) empty `shouldBe` App (Var "y") (Var "y")
 
   it "☯ instantiate" $ do
     instantiate Any empty `shouldBe` (Any, empty)
     instantiate (For "x" (Var "x")) empty `shouldBe` (Var "x", fromList [("x", Var "x")])
     instantiate (Ann (For "x" $ Var "x") (For "x" $ Var "x")) empty `shouldBe` (Ann (Var "x") (Var "a"), (fromList [("x", Var "x"), ("a", Var "a")]) {seed = 2})
-    instantiate (Fun (For "x" $ Var "x") (For "x" $ Var "x")) empty `shouldBe` (Fun (Var "x") (Var "a"), (fromList [("x", Var "x"), ("a", Var "a")]) {seed = 2})
-    instantiate (Fun (For "x" $ Var "x") (For "x" $ Var "x")) empty `shouldBe` (Fun (Var "x") (Var "a"), (fromList [("x", Var "x"), ("a", Var "a")]) {seed = 2})
+    instantiate (Lam (For "x" $ Var "x") (For "x" $ Var "x")) empty `shouldBe` (Lam (Var "x") (Var "a"), (fromList [("x", Var "x"), ("a", Var "a")]) {seed = 2})
+    instantiate (Lam (For "x" $ Var "x") (For "x" $ Var "x")) empty `shouldBe` (Lam (Var "x") (Var "a"), (fromList [("x", Var "x"), ("a", Var "a")]) {seed = 2})
     instantiate (App (For "x" $ Var "x") (For "x" $ Var "x")) empty `shouldBe` (App (Var "x") (Var "a"), (fromList [("x", Var "x"), ("a", Var "a")]) {seed = 2})
 
   it "☯ typecheck" $ do
@@ -139,13 +136,36 @@ typedTests = describe "--== Typed ==--" $ do
     typecheck' (Ann (Int 1) Tup) empty `shouldBe` Left (CannotUnify Tup IntT)
     typecheck' (Ann (Int 1) IntT) empty `shouldBe` Right IntT
     typecheck' (Typ ["A"]) empty `shouldBe` Right (Typ [])
-    typecheck' (Fun (Int 1) (Int 2)) empty `shouldBe` Right (Fun IntT IntT)
-    typecheck' (Lam (For "x" $ Var "x") (Var "x")) empty `shouldBe` Right (Fun (Var "x") (Var "x"))
-    typecheck' (App (Int 1) Tup) empty `shouldBe` Left (CannotUnify IntT (Fun Tup (Var "a")))
+    typecheck' (Lam (Int 1) (Int 2)) empty `shouldBe` Right (Lam IntT IntT)
+    typecheck' (Lam (For "x" $ Var "x") (Var "x")) empty `shouldBe` Right (Lam (Var "x") (Var "x"))
+    typecheck' (App (Int 1) Tup) empty `shouldBe` Left (CannotUnify IntT (Lam Tup (Var "a")))
     typecheck' (App (Lam Any (Int 1)) Tup) empty `shouldBe` Right IntT
-    typecheck' Add empty `shouldBe` Right (Fun (Var "a") $ Fun (Var "a") (Var "a"))
-    typecheck' Sub empty `shouldBe` Right (Fun (Var "a") $ Fun (Var "a") (Var "a"))
-    typecheck' Mul empty `shouldBe` Right (Fun (Var "a") $ Fun (Var "a") (Var "a"))
+    typecheck' Add empty `shouldBe` Right (Lam (Var "a") $ Lam (Var "a") (Var "a"))
+    typecheck' Sub empty `shouldBe` Right (Lam (Var "a") $ Lam (Var "a") (Var "a"))
+    typecheck' Mul empty `shouldBe` Right (Lam (Var "a") $ Lam (Var "a") (Var "a"))
+
+  it "☯ parser" $ do
+    parse "_" expression `shouldBe` Right Any
+    parse "()" expression `shouldBe` Right Tup
+    parse "$Int" expression `shouldBe` Right IntT
+    parse "42" expression `shouldBe` Right (Int 42)
+    parse "x" expression `shouldBe` Right (Var "x")
+    parse "$Type" expression `shouldBe` Right (Typ [])
+    parse "$Type!True!False" expression `shouldBe` Right (Typ ["True", "False"])
+    parse "|1" expression `shouldBe` Right (Or [Int 1])
+    parse "|1|2" expression `shouldBe` Right (Or [Int 1, Int 2])
+    parse "(+)" expression `shouldBe` Right Add
+    parse "(-)" expression `shouldBe` Right Sub
+    parse "(*)" expression `shouldBe` Right Mul
+    parse "@x.x" expression `shouldBe` Right (For "x" (Var "x"))
+    parse "1:$Int" expression `shouldBe` Right (Ann (Int 1) IntT)
+    parse "()->$Int" expression `shouldBe` Right (Lam Tup IntT)
+    parse "1+2" expression `shouldBe` Right (add (Int 1) (Int 2))
+    parse "1-2" expression `shouldBe` Right (sub (Int 1) (Int 2))
+    parse "1*2" expression `shouldBe` Right (mul (Int 1) (Int 2))
+
+-- it "☯ parser operator precedence" $ do
+--   parse "1+2-3" expression `shouldBe` Right (add (Int 1) (sub (Int 2) (Int 3)))
 
 -- it "☯ alternatives" $ do
 --   let env = defineType "Maybe" [Var "a"] [("Just", Fun (Var "a") (App (Ctr "Maybe") (Var "a"))), ("Nothing", App (Ctr "Maybe") (Var "a"))] empty
