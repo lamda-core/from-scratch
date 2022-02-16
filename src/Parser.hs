@@ -269,30 +269,30 @@ textCaseSensitive str =
 -- Operator precedence
 type Operator a = Int -> (Int -> Parser a) -> Parser (a, Int)
 
-term :: Parser a -> Operator a
-term parser prec _ = do
+term :: (a -> b) -> Parser a -> Operator b
+term f parser prec _ = do
   x <- parser
-  succeed (x, prec)
-
-prefix :: (a -> a) -> Parser op -> Operator a
-prefix f op prec expr = do
-  _ <- op
-  x <- expr prec
   succeed (f x, prec)
 
-infixL :: Int -> (a -> a -> a) -> Parser op -> a -> Operator a
+prefix :: (op -> a -> a) -> Parser op -> Operator a
+prefix f op prec expr = do
+  op' <- op
+  y <- expr prec
+  succeed (f op' y, prec)
+
+infixL :: Int -> (op -> a -> a -> a) -> Parser op -> a -> Operator a
 infixL prec f op x lastPrec expr = do
   _ <- assert (lastPrec < prec) ""
-  _ <- op
+  op' <- op
   y <- expr prec
-  succeed (f x y, lastPrec)
+  succeed (f op' x y, lastPrec)
 
-infixR :: Int -> (a -> a -> a) -> Parser op -> a -> Operator a
+infixR :: Int -> (op -> a -> a -> a) -> Parser op -> a -> Operator a
 infixR prec f op x lastPrec expr = do
   _ <- assert (lastPrec <= prec) ""
-  _ <- op
+  op' <- op
   y <- expr prec
-  succeed (f x y, lastPrec)
+  succeed (f op' x y, lastPrec)
 
 expression :: [Int -> (Int -> Parser a) -> Parser (a, Int)] -> [a -> Int -> (Int -> Parser a) -> Parser (a, Int)] -> Parser a
 expression unaryOperators binaryOperators =

@@ -3,6 +3,8 @@ module Typed where
 import Data.Char (chr, ord)
 import Data.Map (Map, member, (!?))
 import qualified Data.Map as Map
+import Parser (Parser, alphanumeric, char, infixL, infixR, integer, letter, oneOf, oneOrMore, prefix, space, succeed, term, text, zeroOrMore)
+import qualified Parser
 
 data Expr
   = Any
@@ -14,7 +16,6 @@ data Expr
   | Or [Expr]
   | For String Expr
   | Ann Expr Typ
-  | Fun Typ Typ
   | Lam Pattern Expr
   | App Expr Expr
   | Add
@@ -72,7 +73,7 @@ mul a b = app Mul [a, b]
 -- TODO: FIX THIS
 defineType :: String -> [Typ] -> [(String, Typ)] -> Env -> Env
 defineType name args ctrs env = do
-  let kind = foldr Fun (Typ (map fst ctrs)) args
+  let kind = foldr Lam (Typ (map fst ctrs)) args
   let defineCtr env' (x, t) = set x t env'
   foldl defineCtr (set name kind env) ctrs
 
@@ -89,7 +90,7 @@ match (For x p) a env = match p a (set x (Var x) env)
 match pattern (Var x) env = do
   a <- get x env
   match pattern a env
-match (Fun p q) (Fun a b) env = do
+match (Lam p q) (Lam a b) env = do
   env <- match p a env
   match q b env
 match (App p q) (App a b) env = do
@@ -98,33 +99,28 @@ match (App p q) (App a b) env = do
 match p a env | p == a = Just env
 match _ _ _ = Nothing
 
--- | Reduces an expression to Weak Head Normal Form.
-reduce :: Expr -> Env -> Expr
-reduce (Var x) env = case get x env of
+eval :: Expr -> Env -> Expr
+eval (Var x) env = case get x env of
   Just a -> a
   Nothing -> Var x
-reduce (Ann a _) env = reduce a env
-reduce (Or (a : _)) env = reduce a env
-reduce (App (Lam pattern body) arg) env = reduce (App (Or [Lam pattern body]) arg) env
-reduce (App (Or (Lam pattern body : bs)) arg) env = case match pattern arg env of
-  Just env -> reduce body env
-  Nothing -> reduce (App (Or bs) arg) env
-reduce (App (App op a) b) env | op `elem` binaryOperators =
-  case (op, reduce a env, reduce b env) of
+eval (Ann a _) env = eval a env
+eval (Or (a : _)) env = eval a env
+eval (App (Lam pattern body) arg) env = eval (App (Or [Lam pattern body]) arg) env
+eval (App (Or []) arg) env = App (Or []) (eval arg env)
+eval (App (Or (Lam pattern body : bs)) arg) env = case match pattern arg env of
+  Just env -> eval body env
+  Nothing -> eval (App (Or bs) arg) env
+eval (App (App op a) b) env | op `elem` binaryOperators =
+  case (op, eval a env, eval b env) of
     (Add, Int k1, Int k2) -> Int (k1 + k2)
     (Sub, Int k1, Int k2) -> Int (k1 - k2)
     (Mul, Int k1, Int k2) -> Int (k1 * k2)
     (_, a, b) -> App (App op a) b
-reduce (App a b) env = case reduce a env of
-  a' | a == a' -> App a b
-  a -> reduce (App a b) env
-reduce a _ = a
-
--- | Evaluates an expression to Normal Form.
-eval :: Expr -> Env -> Expr
-eval expr env = case reduce expr env of
-  App a b -> App a (eval b env)
-  a -> a
+eval (App a b) env = case eval a env of
+  a@(Or _) -> eval (App a b) env
+  a@(Lam _ _) -> eval (App a b) env
+  a -> App a (eval b env)
+eval a _ = a
 
 typecheck :: Expr -> Env -> Either Error (Typ, Env)
 typecheck Any env = Right (Any, env)
@@ -148,23 +144,19 @@ typecheck (For x a) env = typecheck a (set x (Var x) env)
 typecheck (Ann a t) env = do
   (ta, env) <- typecheck a env
   unify t ta env
-typecheck (Fun a b) env = do
-  (ta, env) <- typecheck a env
-  (tb, env) <- typecheck b env
-  Right (Fun (eval ta env) tb, env)
 typecheck (Lam p a) env = do
   (tp, env) <- typecheck p env
   (ta, env) <- typecheck a env
-  Right (Fun tp ta, env)
+  Right (Lam tp ta, env)
 typecheck (App a b) env = do
   (ta, env) <- typecheck a env
   (tb, env) <- typecheck b env
   let (x, env') = newVar env
-  (_, env') <- unify (eval ta env') (Fun tb (Var x)) env'
+  (_, env') <- unify (eval ta env') (Lam tb (Var x)) env'
   Right (eval (Var x) env', env)
-typecheck Add env = Right (instantiate (For "a" $ Fun (Var "a") $ Fun (Var "a") (Var "a")) env)
-typecheck Sub env = Right (instantiate (For "a" $ Fun (Var "a") $ Fun (Var "a") (Var "a")) env)
-typecheck Mul env = Right (instantiate (For "a" $ Fun (Var "a") $ Fun (Var "a") (Var "a")) env)
+typecheck Add env = Right (instantiate (For "a" $ Lam (Var "a") $ Lam (Var "a") (Var "a")) env)
+typecheck Sub env = Right (instantiate (For "a" $ Lam (Var "a") $ Lam (Var "a") (Var "a")) env)
+typecheck Mul env = Right (instantiate (For "a" $ Lam (Var "a") $ Lam (Var "a") (Var "a")) env)
 
 unify :: Expr -> Expr -> Env -> Either Error (Expr, Env)
 unify Any b env = Right (b, env)
@@ -172,7 +164,7 @@ unify a Any env = Right (a, env)
 unify (For x a) b env = unify a b (set x (Var x) env)
 unify a (For x b) env = unify a b (set x (Var x) env)
 unify (Ann a ta) (Ann b tb) env = unify2 Ann (a, ta) (b, tb) env
-unify (Fun a1 b1) (Fun a2 b2) env = unify2 Fun (a1, b1) (a2, b2) env
+unify (Lam a1 b1) (Lam a2 b2) env = unify2 Lam (a1, b1) (a2, b2) env
 unify a a' env | a == a' = Right (a, env)
 unify (Var x) b _ | x `occurs` b = Left (CannotUnify (Var x) b)
 unify a (Var x) _ | x `occurs` a = Left (CannotUnify a (Var x))
@@ -189,7 +181,7 @@ unify2 f (a1, b1) (a2, b2) env = do
 occurs :: String -> Expr -> Bool
 occurs x (Var x') = x == x'
 occurs x (Ann a b) = occurs x a || occurs x b
-occurs x (Fun a b) = occurs x a || occurs x b
+occurs x (Lam a b) = occurs x a || occurs x b
 -- occurs x (Lam ((p, a) : alts)) = (not (occurs x p) && occurs x a) || occurs x (Lam alts)
 occurs x (App a b) = occurs x a || occurs x b
 occurs _ _ = False
@@ -200,7 +192,7 @@ instantiate (For x a) env | has x env = do
   rename x y a env'
 instantiate (For x a) env = instantiate a (set x (Var x) env)
 instantiate (Ann a t) env = instantiate2 Ann a t env
-instantiate (Fun a b) env = instantiate2 Fun a b env
+instantiate (Lam a b) env = instantiate2 Lam a b env
 instantiate (App a b) env = instantiate2 App a b env
 -- TODO: Lam -- does it make sense?
 instantiate a env = (a, env)
@@ -221,7 +213,7 @@ rename x y (For z a) env | x /= z = do
   let (a', env') = rename x y a env
   (For z a', env')
 rename x y (Ann a t) env = rename2 x y Ann a t env
-rename x y (Fun a b) env = rename2 x y Fun a b env
+rename x y (Lam a b) env = rename2 x y Lam a b env
 rename x y (App a b) env = rename2 x y App a b env
 -- TODO: Lam -- does it make sense?
 rename _ _ a env = (a, env)
@@ -245,6 +237,34 @@ intToName 0 = ""
 intToName i = do
   let (q, r) = quotRem (i - 1) 26
   chr (r + ord 'a') : intToName q
+
+expression :: Parser Expr
+expression = do
+  let name :: Parser String
+      name = do
+        x <- letter
+        xs <- zeroOrMore (oneOf [alphanumeric, char '_', char '\''])
+        succeed (x : xs)
+  Parser.expression
+    [ term (const Any) (char '_'),
+      term (const IntT) (text "$Int"),
+      term Int integer,
+      term Var name,
+      term Typ (do _ <- text "$Type"; zeroOrMore (do _ <- char '!'; name)),
+      term Or (oneOrMore (do _ <- char '|'; expression)),
+      term (const Tup) (text "()"),
+      term (const Add) (text "(+)"),
+      term (const Sub) (text "(-)"),
+      term (const Mul) (text "(*)"),
+      prefix For (do _ <- char '@'; x <- name; _ <- char '.'; succeed x)
+    ]
+    [ infixR 1 (const Ann) (char ':'),
+      infixR 2 (const Lam) (text "->"),
+      infixL 3 (const add) (text "+"),
+      infixL 3 (const sub) (text "-"),
+      infixL 4 (const mul) (text "*"),
+      infixL 5 (const App) (oneOrMore space)
+    ]
 
 -- alternatives :: Typ -> Env -> Either Error [Pattern]
 -- alternatives (Typ (x : xs)) env = do
