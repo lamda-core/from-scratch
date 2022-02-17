@@ -3,7 +3,7 @@ module Typed where
 import Data.Char (chr, ord)
 import Data.Map (Map, member, (!?))
 import qualified Data.Map as Map
-import Parser (Parser, alphanumeric, char, infixL, infixR, integer, letter, oneOf, oneOrMore, prefix, space, succeed, term, text, zeroOrMore)
+import Parser (Parser, alphanumeric, char, inbetween, infixL, infixR, integer, letter, oneOf, prefix, spaces, succeed, term, text, zeroOrMore)
 import qualified Parser
 
 data Expr
@@ -13,7 +13,7 @@ data Expr
   | Int Int
   | Var String
   | Typ [String]
-  | Or [Expr]
+  | Or Expr Expr
   | For String Expr
   | Ann Expr Typ
   | Lam Pattern Expr
@@ -70,6 +70,47 @@ sub a b = app Sub [a, b]
 mul :: Expr -> Expr -> Expr
 mul a b = app Mul [a, b]
 
+expression :: Parser Expr
+expression = do
+  let name :: Parser String
+      name = do
+        x <- letter
+        xs <- zeroOrMore (oneOf [alphanumeric, char '_', char '\''])
+        succeed (x : xs)
+  let alts :: Parser [String]
+      alts = do
+        _ <- text "$Type"
+        zeroOrMore (do _ <- spaces; _ <- char '!'; _ <- spaces; name)
+  let forAll :: Parser String
+      forAll = do
+        _ <- char '@'
+        _ <- spaces
+        x <- name
+        _ <- spaces
+        _ <- char '.'
+        succeed x
+  Parser.expression
+    [ term (const Any) (char '_'),
+      term (const IntT) (text "$Int"),
+      term Int integer,
+      term Var name,
+      term Typ alts,
+      term (const Tup) (text "()"),
+      term (const Add) (text "(+)"),
+      term (const Sub) (text "(-)"),
+      term (const Mul) (text "(*)"),
+      prefix For forAll,
+      inbetween (const id) (char '(') (char ')')
+    ]
+    [ infixL 1 (const Or) (char '|'),
+      infixR 2 (const Ann) (char ':'),
+      infixR 3 (const Lam) (text "->"),
+      infixL 4 (const add) (char '+'),
+      infixL 4 (const sub) (char '-'),
+      infixL 5 (const mul) (char '*'),
+      infixL 6 (const App) (succeed ())
+    ]
+
 -- TODO: FIX THIS
 defineType :: String -> [Typ] -> [(String, Typ)] -> Env -> Env
 defineType name args ctrs env = do
@@ -82,9 +123,9 @@ match Any _ env = Just env
 match (Var x) a env = do
   p <- get x env
   if p == Var x then Just (set x a env) else match p a env
-match (Or (p : ps)) a env = case match p a env of
+match (Or p q) a env = case match p a env of
   Just env -> Just env
-  Nothing -> match (Or ps) a env
+  Nothing -> match q a env
 match (For x p) a env = match p a (set x (Var x) env)
 -- TODO: Ann Expr Typ -- should typecheck
 match pattern (Var x) env = do
@@ -104,12 +145,11 @@ eval (Var x) env = case get x env of
   Just a -> a
   Nothing -> Var x
 eval (Ann a _) env = eval a env
-eval (Or (a : _)) env = eval a env
-eval (App (Lam pattern body) arg) env = eval (App (Or [Lam pattern body]) arg) env
-eval (App (Or []) arg) env = App (Or []) (eval arg env)
-eval (App (Or (Lam pattern body : bs)) arg) env = case match pattern arg env of
+eval (Or a _) env = eval a env
+eval (App (Lam pattern body) arg) env = eval (App (Or (Lam pattern body) Any) arg) env
+eval (App (Or (Lam pattern body) other) arg) env = case match pattern arg env of
   Just env -> eval body env
-  Nothing -> eval (App (Or bs) arg) env
+  Nothing -> eval (App other arg) env
 eval (App (App op a) b) env | op `elem` binaryOperators =
   case (op, eval a env, eval b env) of
     (Add, Int k1, Int k2) -> Int (k1 + k2)
@@ -117,7 +157,7 @@ eval (App (App op a) b) env | op `elem` binaryOperators =
     (Mul, Int k1, Int k2) -> Int (k1 * k2)
     (_, a, b) -> App (App op a) b
 eval (App a b) env = case eval a env of
-  a@(Or _) -> eval (App a b) env
+  a@(Or _ _) -> eval (App a b) env
   a@(Lam _ _) -> eval (App a b) env
   a -> App a (eval b env)
 eval a _ = a
@@ -135,10 +175,9 @@ typecheck (Var x) env = case get x env of
   Just a -> typecheck a env
   Nothing -> Left (UndefinedName x)
 typecheck (Typ _) env = Right (Typ [], env)
-typecheck (Or []) env = Right (Any, env)
-typecheck (Or (a : bs)) env = do
+typecheck (Or a b) env = do
   (ta, env) <- typecheck a env
-  (tb, env) <- typecheck (Or bs) env
+  (tb, env) <- typecheck b env
   unify ta tb env
 typecheck (For x a) env = typecheck a (set x (Var x) env)
 typecheck (Ann a t) env = do
@@ -237,34 +276,6 @@ intToName 0 = ""
 intToName i = do
   let (q, r) = quotRem (i - 1) 26
   chr (r + ord 'a') : intToName q
-
-expression :: Parser Expr
-expression = do
-  let name :: Parser String
-      name = do
-        x <- letter
-        xs <- zeroOrMore (oneOf [alphanumeric, char '_', char '\''])
-        succeed (x : xs)
-  Parser.expression
-    [ term (const Any) (char '_'),
-      term (const IntT) (text "$Int"),
-      term Int integer,
-      term Var name,
-      term Typ (do _ <- text "$Type"; zeroOrMore (do _ <- char '!'; name)),
-      term Or (oneOrMore (do _ <- char '|'; expression)),
-      term (const Tup) (text "()"),
-      term (const Add) (text "(+)"),
-      term (const Sub) (text "(-)"),
-      term (const Mul) (text "(*)"),
-      prefix For (do _ <- char '@'; x <- name; _ <- char '.'; succeed x)
-    ]
-    [ infixR 1 (const Ann) (char ':'),
-      infixR 2 (const Lam) (text "->"),
-      infixL 3 (const add) (text "+"),
-      infixL 3 (const sub) (text "-"),
-      infixL 4 (const mul) (text "*"),
-      infixL 5 (const App) (oneOrMore space)
-    ]
 
 -- alternatives :: Typ -> Env -> Either Error [Pattern]
 -- alternatives (Typ (x : xs)) env = do

@@ -115,6 +115,9 @@ charIf condition message = do
 space :: Parser Char
 space = charIf Char.isSpace "a blank space"
 
+spaces :: Parser String
+spaces = zeroOrMore space
+
 letter :: Parser Char
 letter = charIf Char.isLetter "a letter"
 
@@ -210,12 +213,6 @@ foldR f final parser =
 -- TODO: splitWithDelimiters
 
 -- Common
-token :: Parser a -> Parser a
-token parser = do
-  x <- parser
-  _ <- zeroOrMore space
-  succeed x
-
 integer :: Parser Int
 integer =
   do
@@ -267,31 +264,50 @@ textCaseSensitive str =
 -- TODO: collection
 
 -- Operator precedence
-type Operator a = Int -> (Int -> Parser a) -> Parser (a, Int)
+type UnaryOperator a = Int -> (Int -> Parser a) -> Parser (a, Int)
 
-term :: (a -> b) -> Parser a -> Operator b
+type BinaryOperator a = a -> UnaryOperator a
+
+term :: (a -> b) -> Parser a -> UnaryOperator b
 term f parser prec _ = do
   x <- parser
+  _ <- spaces
   succeed (f x, prec)
 
-prefix :: (op -> a -> a) -> Parser op -> Operator a
+prefix :: (op -> a -> a) -> Parser op -> UnaryOperator a
 prefix f op prec expr = do
   op' <- op
+  _ <- spaces
   y <- expr prec
+  _ <- spaces
   succeed (f op' y, prec)
 
-infixL :: Int -> (op -> a -> a -> a) -> Parser op -> a -> Operator a
+inbetween :: (open -> a -> a) -> Parser open -> Parser close -> UnaryOperator a
+inbetween f open close prec expr = do
+  open' <- open
+  _ <- spaces
+  y <- expr 0
+  _ <- spaces
+  _ <- close
+  _ <- spaces
+  succeed (f open' y, prec)
+
+infixL :: Int -> (op -> a -> a -> a) -> Parser op -> BinaryOperator a
 infixL prec f op x lastPrec expr = do
   _ <- assert (lastPrec < prec) ""
   op' <- op
+  _ <- spaces
   y <- expr prec
+  _ <- spaces
   succeed (f op' x y, lastPrec)
 
-infixR :: Int -> (op -> a -> a -> a) -> Parser op -> a -> Operator a
+infixR :: Int -> (op -> a -> a -> a) -> Parser op -> BinaryOperator a
 infixR prec f op x lastPrec expr = do
   _ <- assert (lastPrec <= prec) ""
   op' <- op
+  _ <- spaces
   y <- expr prec
+  _ <- spaces
   succeed (f op' x y, lastPrec)
 
 expression :: [Int -> (Int -> Parser a) -> Parser (a, Int)] -> [a -> Int -> (Int -> Parser a) -> Parser (a, Int)] -> Parser a
