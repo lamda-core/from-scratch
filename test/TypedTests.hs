@@ -16,60 +16,83 @@ typedTests = describe "--== Typed ==--" $ do
       parse "x" expression `shouldBe` Right x
       parse "$Type" expression `shouldBe` Right (Typ [])
       parse "$Type!True!False" expression `shouldBe` Right (Typ ["True", "False"])
-      parse "|x" expression `shouldBe` Right (Or [x])
-      parse "|x|y" expression `shouldBe` Right (Or [x, y])
+      parse "$Type ! True ! False" expression `shouldBe` Right (Typ ["True", "False"])
       parse "(+)" expression `shouldBe` Right Add
       parse "(-)" expression `shouldBe` Right Sub
       parse "(*)" expression `shouldBe` Right Mul
 
     it "☯ unary operators" $ do
       parse "@x.y" expression `shouldBe` Right (For "x" y)
+      parse "@ x . y" expression `shouldBe` Right (For "x" y)
       parse "(x)" expression `shouldBe` Right x
+      parse "( x )" expression `shouldBe` Right x
 
     it "☯ binary operators" $ do
       parse "x:y" expression `shouldBe` Right (Ann x y)
+      parse "x : y" expression `shouldBe` Right (Ann x y)
       parse "x->y" expression `shouldBe` Right (Lam x y)
+      parse "x -> y" expression `shouldBe` Right (Lam x y)
+      parse "x|y" expression `shouldBe` Right (Or x y)
+      parse "x | y" expression `shouldBe` Right (Or x y)
       parse "x+y" expression `shouldBe` Right (add x y)
+      parse "x + y" expression `shouldBe` Right (add x y)
       parse "x-y" expression `shouldBe` Right (sub x y)
+      parse "x - y" expression `shouldBe` Right (sub x y)
       parse "x*y" expression `shouldBe` Right (mul x y)
+      parse "x * y" expression `shouldBe` Right (mul x y)
       parse "x y" expression `shouldBe` Right (App x y)
+      parse "x  y" expression `shouldBe` Right (App x y)
 
+    -- TODO: add | for precedence
     it "☯ operator precedence" $ do
-      parse "x:y:z" expression `shouldBe` Right (Ann x (Ann y z))
-      parse "x:y->z" expression `shouldBe` Right (Ann x (Lam y z))
-      parse "x:y+z" expression `shouldBe` Right (Ann x (add y z))
-      parse "x:y-z" expression `shouldBe` Right (Ann x (sub y z))
-      parse "x:y*z" expression `shouldBe` Right (Ann x (mul y z))
-      parse "x:y z" expression `shouldBe` Right (Ann x (App y z))
-      parse "x->y:z" expression `shouldBe` Right (Ann (Lam x y) z)
-      parse "x->y->z" expression `shouldBe` Right (Lam x (Lam y z))
-      parse "x->y+z" expression `shouldBe` Right (Lam x (add y z))
-      parse "x->y-z" expression `shouldBe` Right (Lam x (sub y z))
-      parse "x->y*z" expression `shouldBe` Right (Lam x (mul y z))
-      parse "x->y z" expression `shouldBe` Right (Lam x (App y z))
-      parse "x+y:z" expression `shouldBe` Right (Ann (add x y) z)
-      parse "x+y->z" expression `shouldBe` Right (Lam (add x y) z)
-      parse "x+y+z" expression `shouldBe` Right (add (add x y) z)
-      parse "x+y-z" expression `shouldBe` Right (sub (add x y) z)
-      parse "x+y*z" expression `shouldBe` Right (add x (mul y z))
-      parse "x+y z" expression `shouldBe` Right (add x (App y z))
-      parse "x-y:z" expression `shouldBe` Right (Ann (sub x y) z)
-      parse "x-y->z" expression `shouldBe` Right (Lam (sub x y) z)
-      parse "x-y+z" expression `shouldBe` Right (add (sub x y) z)
-      parse "x-y-z" expression `shouldBe` Right (sub (sub x y) z)
-      parse "x-y*z" expression `shouldBe` Right (sub x (mul y z))
-      parse "x-y z" expression `shouldBe` Right (sub x (App y z))
-      parse "x*y:z" expression `shouldBe` Right (Ann (mul x y) z)
-      parse "x*y->z" expression `shouldBe` Right (Lam (mul x y) z)
-      parse "x*y+z" expression `shouldBe` Right (add (mul x y) z)
-      parse "x*y-z" expression `shouldBe` Right (sub (mul x y) z)
-      parse "x*y*z" expression `shouldBe` Right (mul (mul x y) z)
-      parse "x*y z" expression `shouldBe` Right (mul x (App y z))
-      parse "x y:z" expression `shouldBe` Right (Ann (App x y) z)
-      parse "x y->z" expression `shouldBe` Right (Lam (App x y) z)
-      parse "x y+z" expression `shouldBe` Right (add (App x y) z)
-      parse "x y-z" expression `shouldBe` Right (sub (App x y) z)
-      parse "x y*z" expression `shouldBe` Right (mul (App x y) z)
+      parse "x | y | z" expression `shouldBe` Right (Or (Or x y) z)
+      parse "x | y : z" expression `shouldBe` Right (Or x (Ann y z))
+      parse "x | y -> z" expression `shouldBe` Right (Or x (Lam y z))
+      parse "x | y + z" expression `shouldBe` Right (Or x (add y z))
+      parse "x | y - z" expression `shouldBe` Right (Or x (sub y z))
+      parse "x | y * z" expression `shouldBe` Right (Or x (mul y z))
+      parse "x | y z" expression `shouldBe` Right (Or x (App y z))
+      parse "x : y | z" expression `shouldBe` Right (Or (Ann x y) z)
+      parse "x : y : z" expression `shouldBe` Right (Ann x (Ann y z))
+      parse "x : y -> z" expression `shouldBe` Right (Ann x (Lam y z))
+      parse "x : y + z" expression `shouldBe` Right (Ann x (add y z))
+      parse "x : y - z" expression `shouldBe` Right (Ann x (sub y z))
+      parse "x : y * z" expression `shouldBe` Right (Ann x (mul y z))
+      parse "x : y z" expression `shouldBe` Right (Ann x (App y z))
+      parse "x -> y | z" expression `shouldBe` Right (Or (Lam x y) z)
+      parse "x -> y : z" expression `shouldBe` Right (Ann (Lam x y) z)
+      parse "x -> y -> z" expression `shouldBe` Right (Lam x (Lam y z))
+      parse "x -> y + z" expression `shouldBe` Right (Lam x (add y z))
+      parse "x -> y - z" expression `shouldBe` Right (Lam x (sub y z))
+      parse "x -> y * z" expression `shouldBe` Right (Lam x (mul y z))
+      parse "x -> y z" expression `shouldBe` Right (Lam x (App y z))
+      parse "x + y | z" expression `shouldBe` Right (Or (add x y) z)
+      parse "x + y : z" expression `shouldBe` Right (Ann (add x y) z)
+      parse "x + y -> z" expression `shouldBe` Right (Lam (add x y) z)
+      parse "x + y + z" expression `shouldBe` Right (add (add x y) z)
+      parse "x + y - z" expression `shouldBe` Right (sub (add x y) z)
+      parse "x + y * z" expression `shouldBe` Right (add x (mul y z))
+      parse "x + y z" expression `shouldBe` Right (add x (App y z))
+      parse "x - y | z" expression `shouldBe` Right (Or (sub x y) z)
+      parse "x - y : z" expression `shouldBe` Right (Ann (sub x y) z)
+      parse "x - y -> z" expression `shouldBe` Right (Lam (sub x y) z)
+      parse "x - y + z" expression `shouldBe` Right (add (sub x y) z)
+      parse "x - y - z" expression `shouldBe` Right (sub (sub x y) z)
+      parse "x - y * z" expression `shouldBe` Right (sub x (mul y z))
+      parse "x - y z" expression `shouldBe` Right (sub x (App y z))
+      parse "x * y | z" expression `shouldBe` Right (Or (mul x y) z)
+      parse "x * y : z" expression `shouldBe` Right (Ann (mul x y) z)
+      parse "x * y -> z" expression `shouldBe` Right (Lam (mul x y) z)
+      parse "x * y + z" expression `shouldBe` Right (add (mul x y) z)
+      parse "x * y - z" expression `shouldBe` Right (sub (mul x y) z)
+      parse "x * y * z" expression `shouldBe` Right (mul (mul x y) z)
+      parse "x * y z" expression `shouldBe` Right (mul x (App y z))
+      parse "x y | z" expression `shouldBe` Right (Or (App x y) z)
+      parse "x y : z" expression `shouldBe` Right (Ann (App x y) z)
+      parse "x y -> z" expression `shouldBe` Right (Lam (App x y) z)
+      parse "x y + z" expression `shouldBe` Right (add (App x y) z)
+      parse "x y - z" expression `shouldBe` Right (sub (App x y) z)
+      parse "x y * z" expression `shouldBe` Right (mul (App x y) z)
       parse "x y z" expression `shouldBe` Right (App (App x y) z)
       parse "x (y z)" expression `shouldBe` Right (App x (App y z))
 
@@ -127,8 +150,10 @@ typedTests = describe "--== Typed ==--" $ do
     match (Var "x") Tup empty `shouldBe` Nothing
     match (Var "x") Tup (fromList [("x", Var "x")]) `shouldBe` Just (fromList [("x", Tup)])
     match (Var "x") Tup (fromList [("x", Any)]) `shouldBe` Just (fromList [("x", Any)])
-    match (Or []) Tup empty `shouldBe` Nothing
-    match (Or [IntT, Var "x"]) Tup (fromList [("x", Var "x")]) `shouldBe` Just (fromList [("x", Tup)])
+    -- match (Or []) Tup empty `shouldBe` Nothing
+    -- match (Or [IntT, Var "x"]) Tup (fromList [("x", Var "x")]) `shouldBe` Just (fromList [("x", Tup)])
+    match (Or IntT (Var "x")) IntT (fromList [("x", Var "x")]) `shouldBe` Just (fromList [("x", Var "x")])
+    match (Or IntT (Var "x")) Tup (fromList [("x", Var "x")]) `shouldBe` Just (fromList [("x", Tup)])
     match (For "x" (Var "y")) Tup (fromList [("y", Var "y")]) `shouldBe` Just (fromList [("x", Var "x"), ("y", Tup)])
     -- match (Ann (Var "x") (Var "y")) (Int 1) empty `shouldBe` Just (fromList [("x", Int 1), ("y", IntT)])
     match (Lam (Var "x") (Var "y")) (Lam Tup IntT) (fromList [("x", Var "x"), ("y", Var "y")]) `shouldBe` Just (fromList [("x", Tup), ("y", IntT)])
@@ -144,17 +169,20 @@ typedTests = describe "--== Typed ==--" $ do
     eval x empty `shouldBe` x
     eval x (fromList [("x", i1)]) `shouldBe` i1
     eval (add x x) (fromList [("x", i1)]) `shouldBe` i2
-    eval (Or []) empty `shouldBe` Or []
-    eval (Or [add i1 i1, add i2 i2]) empty `shouldBe` i2
+    -- eval (Or []) empty `shouldBe` Or []
+    -- eval (Or [add i1 i1, add i2 i2]) empty `shouldBe` i2
+    eval (Or (add i1 i1) (add i2 i2)) empty `shouldBe` i2
     eval (Ann (add i1 i1) IntT) empty `shouldBe` i2
     eval (App x (add i1 i1)) (fromList [("x", Tup)]) `shouldBe` App Tup i2
     eval (App (Ann x (Lam Tup IntT)) Tup) empty `shouldBe` App x Tup
-    eval (App (Lam i1 i2) i3) empty `shouldBe` App (Or []) i3
+    eval (App (Lam i1 i2) i3) empty `shouldBe` App Any i3
     eval (App (Lam i1 i2) x) (fromList [("x", i1)]) `shouldBe` i2
     eval (App (Lam (For "x" x) (add x x)) i1) empty `shouldBe` i2
-    eval (App (Or []) i1) empty `shouldBe` App (Or []) i1
-    eval (App (Or [Lam i1 i2, Lam Any i3]) i1) empty `shouldBe` i2
-    eval (App (Or [Lam i1 i2, Lam Any i3]) i0) empty `shouldBe` i3
+    -- eval (App (Or []) i1) empty `shouldBe` App (Or []) i1
+    -- eval (App (Or [Lam i1 i2, Lam Any i3]) i1) empty `shouldBe` i2
+    -- eval (App (Or [Lam i1 i2, Lam Any i3]) i0) empty `shouldBe` i3
+    eval (App (Or (Lam i1 i2) (Lam Any i3)) i1) empty `shouldBe` i2
+    eval (App (Or (Lam i1 i2) (Lam Any i3)) i0) empty `shouldBe` i3
     eval (App (App x (add i1 i1)) (add i1 i2)) (fromList [("x", Tup)]) `shouldBe` App (App Tup i2) i3
 
   it "☯ intToName" $ do
@@ -195,9 +223,11 @@ typedTests = describe "--== Typed ==--" $ do
     typecheck' (Var "x") (fromList [("x", Int 1)]) `shouldBe` Right IntT
     typecheck' (Var "x") (fromList [("x", Var "x")]) `shouldBe` Right (Var "x")
     typecheck' (Var "x") (fromList [("x", Ann (Var "x") IntT)]) `shouldBe` Right IntT
-    typecheck' (Or []) empty `shouldBe` Right Any
-    typecheck' (Or [Int 1, Int 2]) empty `shouldBe` Right IntT
-    typecheck' (Or [Tup, Int 1]) empty `shouldBe` Left (CannotUnify Tup IntT)
+    -- typecheck' (Or []) empty `shouldBe` Right Any
+    -- typecheck' (Or [Int 1, Int 2]) empty `shouldBe` Right IntT
+    -- typecheck' (Or [Tup, Int 1]) empty `shouldBe` Left (CannotUnify Tup IntT)
+    typecheck' (Or (Int 1) (Int 2)) empty `shouldBe` Right IntT
+    typecheck' (Or Tup (Int 1)) empty `shouldBe` Left (CannotUnify Tup IntT)
     -- typecheck' (For "x" $ Var "x") empty `shouldBe` Right (For "x" $ Var "x")
     typecheck' (For "x" $ Int 1) empty `shouldBe` Right IntT
     typecheck' (Ann (Int 1) Tup) empty `shouldBe` Left (CannotUnify Tup IntT)
