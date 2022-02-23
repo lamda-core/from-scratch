@@ -118,12 +118,12 @@ parserTests = describe "--== Parser ==--" $ do
       parse' "_" (between 1 2 (char 'a')) `shouldBe` Left "the character 'a'"
 
     it "☯ foldL" $ do
-      parse "." (foldL (flip (:)) "" letter) `shouldBe` Right ""
-      parse "abc." (foldL (flip (:)) "" letter) `shouldBe` Right "cba"
+      parse' "." (foldL (flip (:)) "" letter) `shouldBe` Right ""
+      parse' "abc." (foldL (flip (:)) "" letter) `shouldBe` Right "cba"
 
     it "☯ foldR" $ do
-      parse "." (foldR (:) "" letter) `shouldBe` Right ""
-      parse "abc." (foldR (:) "" letter) `shouldBe` Right "abc"
+      parse' "." (foldR (:) "" letter) `shouldBe` Right ""
+      parse' "abc." (foldR (:) "" letter) `shouldBe` Right "abc"
 
   describe "☯ Common" $ do
     it "☯ integer" $ do
@@ -142,6 +142,10 @@ parserTests = describe "--== Parser ==--" $ do
     it "☯ textCaseSensitive" $ do
       parse' "hello" (textCaseSensitive "hello") `shouldBe` Right "hello"
       parse' "Hello" (textCaseSensitive "hello") `shouldBe` Left "the text 'hello' (case sensitive)"
+
+    it "☯ identifier" $ do
+      parse' "1" (identifier letter [alphanumeric]) `shouldBe` Left "a letter"
+      parse' "a1" (identifier letter [alphanumeric]) `shouldBe` Right "a1"
 
     it "☯ expression" $ do
       let calculator =
