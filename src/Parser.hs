@@ -191,7 +191,6 @@ between min max parser = do
   xs <- between (min - 1) (max - 1) parser
   succeed (x : xs)
 
--- TODO: add tests
 foldL :: (b -> a -> b) -> b -> Parser a -> Parser b
 foldL f initial parser =
   do
@@ -199,7 +198,6 @@ foldL f initial parser =
     foldL f (f initial x) parser
     |> orElse (succeed initial)
 
--- TODO: add tests
 foldR :: (a -> b -> b) -> b -> Parser a -> Parser b
 foldR f final parser =
   do
@@ -243,6 +241,12 @@ textCaseSensitive str =
   chain (fmap charCaseSensitive str)
     |> orElse (expected $ "the text '" <> str <> "' (case sensitive)")
 
+identifier :: Parser Char -> [Parser Char] -> Parser String
+identifier first rest = do
+  x <- first
+  xs <- zeroOrMore (oneOf rest)
+  succeed (x : xs)
+
 -- TODO: line
 -- TODO: date
 -- TODO: time
@@ -282,6 +286,13 @@ prefix f op prec expr = do
   _ <- spaces
   succeed (f op' y, prec)
 
+prefixList :: (b -> a -> b) -> b -> Parser open -> Parser a -> Parser close -> Parser b
+prefixList f initial open parser close = do
+  _ <- open
+  y <- foldL f initial parser
+  _ <- close
+  succeed y
+
 inbetween :: (open -> a -> a) -> Parser open -> Parser close -> UnaryOperator a
 inbetween f open close prec expr = do
   open' <- open
@@ -310,7 +321,7 @@ infixR prec f op x lastPrec expr = do
   _ <- spaces
   succeed (f op' x y, lastPrec)
 
-expression :: [Int -> (Int -> Parser a) -> Parser (a, Int)] -> [a -> Int -> (Int -> Parser a) -> Parser (a, Int)] -> Parser a
+expression :: [UnaryOperator a] -> [BinaryOperator a] -> Parser a
 expression unaryOperators binaryOperators =
   let unary rbp expr = oneOf (fmap (\op -> op rbp expr) unaryOperators)
       binary x rbp expr = oneOf (fmap (\op -> op x rbp expr) binaryOperators)
