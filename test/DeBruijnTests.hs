@@ -137,30 +137,30 @@ deBruijnTests = describe "--== DeBruijn ==--" $ do
       parse "@x y z. x" [] `shouldBe` Right (For "x" $ For "y" $ For "z" $ Var 2)
 
   describe "☯ reduction rules" $ do
-    -- it "☯ eval" $ do
-    --   let eval' :: String -> Env -> Either Error Expr
-    --       eval' a env = do
-    --         a <- parse a (fmap fst env)
-    --         Right (eval a env)
-    --   eval' "_" [] `shouldBe` Right Any
-    --   eval' "()" [] `shouldBe` Right Tup
-    --   eval' "(+)" [] `shouldBe` Right Add
-    --   eval' "(-)" [] `shouldBe` Right Sub
-    --   eval' "(*)" [] `shouldBe` Right Mul
-    --   eval' "%Int" [] `shouldBe` Right IntT
-    --   eval' "1" [] `shouldBe` Right i1
-    --   eval' "x" [("x", i1)] `shouldBe` Right i1
-    --   eval' "@x. y" [("y", i1)] `shouldBe` Right i1
-    --   eval' "x | 2" [("x", i1)] `shouldBe` Right i1
-    --   eval' "x : %Int" [("x", i1)] `shouldBe` Right i1
-    --   eval' "x -> y" [("x", Tup), ("y", i1)] `shouldBe` Right (Lam Tup i1)
-    --   eval' "x y" [("x", Tup), ("y", i1)] `shouldBe` Right (App Tup i1)
-    --   eval' "(0 -> 1) 0" [] `shouldBe` Right i1
-    --   eval' "(0 -> 1 | _ -> 2) 0" [] `shouldBe` Right i1
-    --   eval' "(0 -> 1 | _ -> 2) 1" [] `shouldBe` Right i2
-    --   eval' "x + x" [("x", i1)] `shouldBe` Right (Int 2)
-    --   eval' "x - x" [("x", i1)] `shouldBe` Right (Int 0)
-    --   eval' "x * x" [("x", i1)] `shouldBe` Right (Int 1)
+    it "☯ eval" $ do
+      let eval' :: String -> Env -> Either Error Expr
+          eval' a env = do
+            a <- parse a (fmap fst env)
+            Right (eval a env)
+      eval' "_" [] `shouldBe` Right Any
+      eval' "()" [] `shouldBe` Right Tup
+      eval' "(+)" [] `shouldBe` Right Add
+      eval' "(-)" [] `shouldBe` Right Sub
+      eval' "(*)" [] `shouldBe` Right Mul
+      eval' "%Int" [] `shouldBe` Right IntT
+      eval' "1" [] `shouldBe` Right i1
+      eval' "x" [("x", i1)] `shouldBe` Right i1
+      eval' "@x. y" [("y", i1)] `shouldBe` Right i1
+      eval' "x | 2" [("x", i1)] `shouldBe` Right i1
+      eval' "x : %Int" [("x", i1)] `shouldBe` Right i1
+      eval' "x -> y" [("x", Tup), ("y", i1)] `shouldBe` Right (Lam Tup i1)
+      eval' "x y" [("x", Tup), ("y", i1)] `shouldBe` Right (App Tup i1)
+      eval' "(0 -> 1) 0" [] `shouldBe` Right i1
+      eval' "(0 -> 1 | _ -> 2) 0" [] `shouldBe` Right i1
+      eval' "(0 -> 1 | _ -> 2) 1" [] `shouldBe` Right i2
+      eval' "x + x" [("x", i1)] `shouldBe` Right (Int 2)
+      eval' "x - x" [("x", i1)] `shouldBe` Right (Int 0)
+      eval' "x * x" [("x", i1)] `shouldBe` Right (Int 1)
 
     -- it "☯ typeOf" $ do
     -- Any

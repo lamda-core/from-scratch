@@ -161,31 +161,20 @@ parse text vars = case Parser.parse text expression of
 
 -- Reduction rules
 eval :: Expr -> Env -> Expr
-eval (Var i) env = snd (env !! i) -- TODO: use a Maybe here
-eval (For x a) env = eval a ((x, Any) : env)
-eval (Or a _) env = eval a env
-eval (Ann a _) env = eval a env
-eval (Lam a b) env = Lam (eval a env) (eval b env)
-eval (App (Lam p a) b) env = eval (App (Or (Lam p a) Any) b) env
-eval (App (Or (Lam p a) other) b) env = case match p b env of
-  Right env -> eval a env
-  Left b -> eval (App other b) env
-eval (App (App op a) b) env | op `elem` [Add, Sub, Mul] =
-  case (op, eval a env, eval b env) of
-    (Add, Int k1, Int k2) -> Int (k1 + k2)
-    (Sub, Int k1, Int k2) -> Int (k1 - k2)
-    (Mul, Int k1, Int k2) -> Int (k1 * k2)
-    (_, a, b) -> App (App op a) b
-eval (App a b) env = case eval a env of
-  a@(Or _ _) -> eval (App a b) env
-  a@(Lam _ _) -> eval (App a b) env
-  a -> App a (eval b env)
-eval a _ = a
+eval a env = case reduce a env of
+  Just (For x a, env) -> eval a ((x, Any) : env)
+  Just (Or a _, env) -> eval a env -- TODO: is this right?
+  Just (Ann a _, env) -> eval a env
+  Just (Lam a b, env) -> Lam (eval a env) (eval b env)
+  Just (App a b, env) -> App a (eval b env)
+  Just (a, _) -> a
+  _ -> a
 
 typeOf :: Expr -> Env -> Either Error Typ
 typeOf Any _ = Right Any
 typeOf (Int _) _ = Right IntT
 
+-- TODO: make sure allocating new variables with For works
 reduce :: Expr -> Env -> Maybe (Expr, Env)
 reduce (Var i) env = reduce (snd (env !! i)) env -- TODO: use a Maybe here
 -- reduce (App (For x a) b) env = reduce (App a b) ((x, Any) : env)
