@@ -268,69 +268,71 @@ identifier first rest = do
 -- TODO: collection
 
 -- Operator precedence
-type UnaryOperator a = Int -> (Int -> Parser a) -> Parser (a, Int)
+type UnaryOperator a = (Int -> Parser a) -> Parser a
 
-type BinaryOperator a = a -> UnaryOperator a
+type BinaryOperator a = Int -> a -> UnaryOperator a
 
 term :: (a -> b) -> Parser a -> UnaryOperator b
-term f parser prec _ = do
+term f parser _ = do
   x <- parser
   _ <- spaces
-  succeed (f x, prec)
+  succeed (f x)
 
 prefix :: (op -> a -> a) -> Parser op -> UnaryOperator a
-prefix f op prec expr = do
+prefix f op expr = do
   op' <- op
   _ <- spaces
-  y <- expr prec
+  y <- expr 0
   _ <- spaces
-  succeed (f op' y, prec)
+  succeed (f op' y)
 
-prefixList :: (b -> a -> b) -> b -> Parser open -> Parser a -> Parser close -> Parser b
+prefixList :: (a -> b -> b) -> b -> Parser open -> Parser a -> Parser close -> Parser b
 prefixList f initial open parser close = do
   _ <- open
-  y <- foldL f initial parser
+  y <- foldR f initial (do _ <- spaces; parser)
+  _ <- spaces
   _ <- close
+  _ <- spaces
   succeed y
 
 inbetween :: (open -> a -> a) -> Parser open -> Parser close -> UnaryOperator a
-inbetween f open close prec expr = do
+inbetween f open close expr = do
   open' <- open
   _ <- spaces
   y <- expr 0
   _ <- spaces
   _ <- close
   _ <- spaces
-  succeed (f open' y, prec)
+  succeed (f open' y)
 
 infixL :: Int -> (op -> a -> a -> a) -> Parser op -> BinaryOperator a
-infixL prec f op x lastPrec expr = do
-  _ <- assert (lastPrec < prec) ""
+infixL opPrec f op prec x expr = do
+  _ <- assert (prec < opPrec) ""
   op' <- op
   _ <- spaces
-  y <- expr prec
+  y <- expr opPrec
   _ <- spaces
-  succeed (f op' x y, lastPrec)
+  succeed (f op' x y)
 
 infixR :: Int -> (op -> a -> a -> a) -> Parser op -> BinaryOperator a
-infixR prec f op x lastPrec expr = do
-  _ <- assert (lastPrec <= prec) ""
+infixR opPrec f op prec x expr = do
+  _ <- assert (prec <= opPrec) ""
   op' <- op
   _ <- spaces
-  y <- expr prec
+  y <- expr opPrec
   _ <- spaces
-  succeed (f op' x y, lastPrec)
+  succeed (f op' x y)
 
 expression :: [UnaryOperator a] -> [BinaryOperator a] -> Parser a
 expression unaryOperators binaryOperators =
-  let unary rbp expr = oneOf (fmap (\op -> op rbp expr) unaryOperators)
-      binary x rbp expr = oneOf (fmap (\op -> op x rbp expr) binaryOperators)
-      expr rbp = do
-        (x, rbp) <- unary rbp expr
-        expr2 x rbp
-      expr2 x rbp =
+  let unary f = oneOf (fmap (\op -> op f) unaryOperators)
+      binary x f prec = oneOf (fmap (\op -> op x f prec) binaryOperators)
+      expr prec = do
+        x <- unary expr
+        expr2 prec x
+      expr2 prec x =
         do
-          (y, lbp) <- binary x rbp expr
-          expr2 y lbp
+          y <- binary prec x expr
+          expr2 prec y
           |> orElse (succeed x)
    in expr 0

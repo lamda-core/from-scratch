@@ -3,7 +3,7 @@ module Typed where
 import Data.Char (chr, ord)
 import Data.Map (Map, member, (!?))
 import qualified Data.Map as Map
-import Parser (Parser, alphanumeric, char, inbetween, infixL, infixR, integer, letter, oneOf, prefix, spaces, succeed, term, text, zeroOrMore)
+import Parser (Parser, alphanumeric, char, inbetween, infixL, infixR, integer, letter, oneOf, oneOrMore, prefix, spaces, succeed, term, text, zeroOrMore)
 import qualified Parser
 
 data Expr
@@ -12,9 +12,8 @@ data Expr
   | IntT
   | Int Int
   | Var String
-  | Typ [String]
-  | Or Expr Expr
   | For String Expr
+  | Or Expr Expr
   | Ann Expr Typ
   | Lam Pattern Expr
   | App Expr Expr
@@ -39,8 +38,10 @@ data Env = Env
   deriving (Eq, Show)
 
 data Error
-  = UndefinedName String
+  = SyntaxError Parser.Error
+  | UndefinedName String
   | CannotUnify Expr Expr
+  | CannotMatch Pattern Expr
   deriving (Eq, Show)
 
 empty :: Env
@@ -70,6 +71,16 @@ sub a b = app Sub [a, b]
 mul :: Expr -> Expr -> Expr
 mul a b = app Mul [a, b]
 
+-- -- TODO: FIX THIS
+-- Bool : True | False = Bool
+-- True : Bool = True
+-- False : Bool = False
+-- defineType :: String -> [Typ] -> [(String, Typ)] -> Env -> Env
+-- defineType name args ctrs env = do
+--   let kind = foldr Lam (Typ (map fst ctrs)) args
+--   let defineCtr env' (x, t) = set x t env'
+--   foldl defineCtr (set name kind env) ctrs
+
 expression :: Parser Expr
 expression = do
   let name :: Parser String
@@ -77,29 +88,23 @@ expression = do
         x <- letter
         xs <- zeroOrMore (oneOf [alphanumeric, char '_', char '\''])
         succeed (x : xs)
-  let alts :: Parser [String]
-      alts = do
-        _ <- text "$Type"
-        zeroOrMore (do _ <- spaces; _ <- char '!'; _ <- spaces; name)
-  let forAll :: Parser String
+  let forAll :: Parser [String]
       forAll = do
         _ <- char '@'
-        _ <- spaces
-        x <- name
+        xs <- oneOrMore (do _ <- spaces; name)
         _ <- spaces
         _ <- char '.'
-        succeed x
+        succeed xs
   Parser.expression
     [ term (const Any) (char '_'),
-      term (const IntT) (text "$Int"),
+      term (const IntT) (text "%Int"),
       term Int integer,
       term Var name,
-      term Typ alts,
       term (const Tup) (text "()"),
       term (const Add) (text "(+)"),
       term (const Sub) (text "(-)"),
       term (const Mul) (text "(*)"),
-      prefix For forAll,
+      prefix (flip (foldr For)) forAll,
       inbetween (const id) (char '(') (char ')')
     ]
     [ infixL 1 (const Or) (char '|'),
@@ -111,91 +116,86 @@ expression = do
       infixL 6 (const App) (succeed ())
     ]
 
--- TODO: FIX THIS
-defineType :: String -> [Typ] -> [(String, Typ)] -> Env -> Env
-defineType name args ctrs env = do
-  let kind = foldr Lam (Typ (map fst ctrs)) args
-  let defineCtr env' (x, t) = set x t env'
-  foldl defineCtr (set name kind env) ctrs
+parse :: String -> Either Error Expr
+parse text = case Parser.parse text expression of
+  Right expr -> Right expr
+  Left err -> Left (SyntaxError err)
 
-match :: Pattern -> Expr -> Env -> Maybe Env
-match Any _ env = Just env
-match (Var x) a env = do
-  p <- get x env
-  if p == Var x then Just (set x a env) else match p a env
-match (Or p q) a env = case match p a env of
-  Just env -> Just env
-  Nothing -> match q a env
+occurs :: String -> Expr -> Bool
+occurs x (Var x') = x == x'
+occurs x (For y a) | x /= y = occurs x a
+occurs x (Or a b) = occurs x a || occurs x b
+occurs x (Ann a b) = occurs x a || occurs x b
+occurs x (Lam a b) = occurs x a || occurs x b
+occurs x (App a b) = occurs x a || occurs x b
+occurs _ _ = False
+
+match :: Pattern -> Expr -> Env -> Either Error Env
+match Any _ env = Right env
+match (Var x) a env = case get x env of
+  Just (Var x') | x == x' -> Right (set x a env)
+  Just p -> match p a env
+  Nothing -> Left (UndefinedName x)
+match p (Var x) env = case get x env of
+  Just a -> match p a env
+  Nothing -> Left (UndefinedName x)
 match (For x p) a env = match p a (set x (Var x) env)
+match (Or p q) a env = case match p a env of
+  Right env -> Right env
+  Left _ -> match q a env
 -- TODO: Ann Expr Typ -- should typecheck
-match pattern (Var x) env = do
-  a <- get x env
-  match pattern a env
 match (Lam p q) (Lam a b) env = do
   env <- match p a env
   match q b env
 match (App p q) (App a b) env = do
   env <- match p a env
   match q b env
-match p a env | p == a = Just env
-match _ _ _ = Nothing
+match p a env | p == a = Right env
+match p a _ = Left (CannotMatch p a)
 
-eval :: Expr -> Env -> Expr
-eval (Var x) env = case get x env of
-  Just a -> a
-  Nothing -> Var x
-eval (Ann a _) env = eval a env
-eval (Or a _) env = eval a env
-eval (App (Lam pattern body) arg) env = eval (App (Or (Lam pattern body) Any) arg) env
-eval (App (Or (Lam pattern body) other) arg) env = case match pattern arg env of
-  Just env -> eval body env
-  Nothing -> eval (App other arg) env
-eval (App (App op a) b) env | op `elem` binaryOperators =
-  case (op, eval a env, eval b env) of
-    (Add, Int k1, Int k2) -> Int (k1 + k2)
-    (Sub, Int k1, Int k2) -> Int (k1 - k2)
-    (Mul, Int k1, Int k2) -> Int (k1 * k2)
-    (_, a, b) -> App (App op a) b
-eval (App a b) env = case eval a env of
-  a@(Or _ _) -> eval (App a b) env
-  a@(Lam _ _) -> eval (App a b) env
-  a -> App a (eval b env)
-eval a _ = a
+-- match :: Pattern -> Expr -> Env -> Maybe Env
+-- match Any _ env = Just env
+-- match (Var x) a env = do
+--   p <- get x env
+--   if p == Var x then Just (set x a env) else match p a env
+-- match (For x p) a env = match p a (set x (Var x) env)
+-- match (Or p q) a env = case match p a env of
+--   Just env -> Just env
+--   Nothing -> match q a env
+-- -- TODO: Ann Expr Typ -- should typecheck
+-- match pattern (Var x) env = do
+--   a <- get x env
+--   match pattern a env
+-- match (Lam p q) (Lam a b) env = do
+--   env <- match p a env
+--   match q b env
+-- match (App p q) (App a b) env = do
+--   env <- match p a env
+--   match q b env
+-- match p a env | p == a = Just env
+-- match _ _ _ = Nothing
 
-typecheck :: Expr -> Env -> Either Error (Typ, Env)
-typecheck Any env = Right (Any, env)
-typecheck Tup env = Right (Tup, env)
-typecheck IntT env = Right (Typ [], env)
-typecheck (Int _) env = Right (IntT, env)
-typecheck (Var x) env = case get x env of
-  Just (Var x') | x == x' -> Right (Var x, env)
-  Just (Ann (Var x') t) | x == x' -> do
-    (_, env) <- typecheck t env
-    Right (instantiate t env)
-  Just a -> typecheck a env
-  Nothing -> Left (UndefinedName x)
-typecheck (Typ _) env = Right (Typ [], env)
-typecheck (Or a b) env = do
-  (ta, env) <- typecheck a env
-  (tb, env) <- typecheck b env
-  unify ta tb env
-typecheck (For x a) env = typecheck a (set x (Var x) env)
-typecheck (Ann a t) env = do
-  (ta, env) <- typecheck a env
-  unify t ta env
-typecheck (Lam p a) env = do
-  (tp, env) <- typecheck p env
-  (ta, env) <- typecheck a env
-  Right (Lam tp ta, env)
-typecheck (App a b) env = do
-  (ta, env) <- typecheck a env
-  (tb, env) <- typecheck b env
-  let (x, env') = newVar env
-  (_, env') <- unify (eval ta env') (Lam tb (Var x)) env'
-  Right (eval (Var x) env', env)
-typecheck Add env = Right (instantiate (For "a" $ Lam (Var "a") $ Lam (Var "a") (Var "a")) env)
-typecheck Sub env = Right (instantiate (For "a" $ Lam (Var "a") $ Lam (Var "a") (Var "a")) env)
-typecheck Mul env = Right (instantiate (For "a" $ Lam (Var "a") $ Lam (Var "a") (Var "a")) env)
+-- eval :: Expr -> Env -> Expr
+-- eval (Var x) env = case get x env of
+--   Just a -> a
+--   Nothing -> Var x
+-- eval (Ann a _) env = eval a env
+-- eval (Or a _) env = eval a env
+-- eval (App (Lam pattern body) arg) env = eval (App (Or (Lam pattern body) Any) arg) env
+-- eval (App (Or (Lam pattern body) other) arg) env = case match pattern arg env of
+--   Just env -> eval body env
+--   Nothing -> eval (App other arg) env
+-- eval (App (App op a) b) env | op `elem` binaryOperators =
+--   case (op, eval a env, eval b env) of
+--     (Add, Int k1, Int k2) -> Int (k1 + k2)
+--     (Sub, Int k1, Int k2) -> Int (k1 - k2)
+--     (Mul, Int k1, Int k2) -> Int (k1 * k2)
+--     (_, a, b) -> App (App op a) b
+-- eval (App a b) env = case eval a env of
+--   a@(Or _ _) -> eval (App a b) env
+--   a@(Lam _ _) -> eval (App a b) env
+--   a -> App a (eval b env)
+-- eval a _ = a
 
 unify :: Expr -> Expr -> Env -> Either Error (Expr, Env)
 unify Any b env = Right (b, env)
@@ -215,15 +215,42 @@ unify2 :: (Expr -> Expr -> Expr) -> (Expr, Expr) -> (Expr, Expr) -> Env -> Eithe
 unify2 f (a1, b1) (a2, b2) env = do
   (a, env) <- unify a1 a2 env
   (b, env) <- unify b1 b2 env
-  Right (f (eval a env) b, env)
+  Right (f a b, env)
 
-occurs :: String -> Expr -> Bool
-occurs x (Var x') = x == x'
-occurs x (Ann a b) = occurs x a || occurs x b
-occurs x (Lam a b) = occurs x a || occurs x b
--- occurs x (Lam ((p, a) : alts)) = (not (occurs x p) && occurs x a) || occurs x (Lam alts)
-occurs x (App a b) = occurs x a || occurs x b
-occurs _ _ = False
+-- typecheck :: Expr -> Env -> Either Error (Typ, Env)
+-- typecheck Any env = Right (Any, env)
+-- typecheck Tup env = Right (Tup, env)
+-- typecheck IntT env = Right (Typ [], env)
+-- typecheck (Int _) env = Right (IntT, env)
+-- typecheck (Var x) env = case get x env of
+--   Just (Var x') | x == x' -> Right (Var x, env)
+--   Just (Ann (Var x') t) | x == x' -> do
+--     (_, env) <- typecheck t env
+--     Right (instantiate t env)
+--   Just a -> typecheck a env
+--   Nothing -> Left (UndefinedName x)
+-- typecheck (Typ _) env = Right (Typ [], env)
+-- typecheck (For x a) env = typecheck a (set x (Var x) env)
+-- typecheck (Or a b) env = do
+--   (ta, env) <- typecheck a env
+--   (tb, env) <- typecheck b env
+--   unify ta tb env
+-- typecheck (Ann a t) env = do
+--   (ta, env) <- typecheck a env
+--   unify t ta env
+-- typecheck (Lam p a) env = do
+--   (tp, env) <- typecheck p env
+--   (ta, env) <- typecheck a env
+--   Right (Lam tp ta, env)
+-- typecheck (App a b) env = do
+--   (ta, env) <- typecheck a env
+--   (tb, env) <- typecheck b env
+--   let (x, env') = newVar env
+--   (_, env') <- unify (eval ta env') (Lam tb (Var x)) env'
+--   Right (eval (Var x) env', env)
+-- typecheck Add env = Right (instantiate (For "a" $ Lam (Var "a") $ Lam (Var "a") (Var "a")) env)
+-- typecheck Sub env = Right (instantiate (For "a" $ Lam (Var "a") $ Lam (Var "a") (Var "a")) env)
+-- typecheck Mul env = Right (instantiate (For "a" $ Lam (Var "a") $ Lam (Var "a") (Var "a")) env)
 
 instantiate :: Expr -> Env -> (Expr, Env)
 instantiate (For x a) env | has x env = do
