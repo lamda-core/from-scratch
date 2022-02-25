@@ -211,13 +211,8 @@ reduce (App a b) env = do
     _ -> Just (App a b, env)
 reduce a env = Just (a, env)
 
--- TODO: optimize (App Or arg) by reusing the reduced form of the arg
 match :: Pattern -> Expr -> Env -> Either Expr Env
 match Any _ env = Right env
-match (Int a) b env = case reduce b env of
-  Just (Int b, env) | a == b -> Right env
-  Just (b, _) -> Left b
-  Nothing -> Left b
 match (Var 0) b ((x, a) : env) = match a b ((x, b) : env)
 match (Var i) b (var : env) = fmap (var :) (match (Var (i - 1)) b env)
 match (For x a) b env = match a b ((x, Any) : env)
@@ -242,5 +237,7 @@ match (App a1 a2) b env = case reduce b env of
     match a2 b2 env
   Just (b, _) -> Left b
   Nothing -> Left b
-match a b env | a == b = Right env
-match _ b _ = Left b
+match a b env = case reduce b env of
+  Just (b, env) | a == b -> Right env
+  Just (b, _) -> Left b
+  Nothing -> Left b
