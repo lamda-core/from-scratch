@@ -163,7 +163,7 @@ parse text vars = case Parser.parse text expression of
 eval :: Expr -> Env -> Expr
 eval a env = case reduce a env of
   Just (For x a, env) -> eval a ((x, Any) : env)
-  Just (Or a _, env) -> eval a env -- TODO: is this right?
+  Just (Or a b, env) -> Or (eval a env) (eval b env)
   Just (Ann a _, env) -> eval a env
   Just (Lam a b, env) -> Lam (eval a env) (eval b env)
   Just (App a b, env) -> App a (eval b env)

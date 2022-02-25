@@ -151,7 +151,7 @@ deBruijnTests = describe "--== DeBruijn ==--" $ do
       eval' "1" [] `shouldBe` Right i1
       eval' "x" [("x", i1)] `shouldBe` Right i1
       eval' "@x. y" [("y", i1)] `shouldBe` Right i1
-      eval' "x | 2" [("x", i1)] `shouldBe` Right i1
+      eval' "x | y" [("x", i1), ("y", i2)] `shouldBe` Right (Or i1 i2)
       eval' "x : %Int" [("x", i1)] `shouldBe` Right i1
       eval' "x -> y" [("x", Tup), ("y", i1)] `shouldBe` Right (Lam Tup i1)
       eval' "x y" [("x", Tup), ("y", i1)] `shouldBe` Right (App Tup i1)
