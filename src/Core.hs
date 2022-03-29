@@ -91,7 +91,7 @@ parse text = case Parser.parse text expression of
   Right expr -> Right expr
   Left err -> Left (SyntaxError err)
 
--- Reduction rules
+-- Reduction rules (Weak Head Normal Form)
 reduce :: Expr -> Env -> Either Error (Expr, Env)
 reduce (Var x) [] = Left (UndefinedVariable x)
 reduce (Var x) ((x', a) : env) | x == x' && a == Var x = Right (Var x, (x, Var x) : env)
@@ -172,11 +172,13 @@ match (p, env) (a, env') = do
         _ | p == a -> Right (env, env')
         _ -> Left (PatternMismatch p (a, env'))
 
+-- Type checking
 typeOf :: Expr -> Env -> Either Error Typ
 typeOf Any _ = Right Any
 typeOf (Int _) _ = Right IntT
 typeOf a _ = Left (UndefinedVariable $ "Not implemented!" ++ show a)
 
+-- Evaluation (Normal Form)
 eval :: Expr -> Env -> Either Error (Expr, Env)
 eval a env = do
   (a, env) <- reduce a env
