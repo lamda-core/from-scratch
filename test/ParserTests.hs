@@ -117,6 +117,10 @@ parserTests = describe "--== Parser ==--" $ do
       parse' "abc" (between 1 2 (char 'a')) `shouldBe` Right "a"
       parse' "_" (between 1 2 (char 'a')) `shouldBe` Left "the character 'a'"
 
+    -- it "☯ split" $ do
+    --   parse' "" (split (char ',') letter) `shouldBe` Right []
+    --   parse' "a,b,c" (split (char ',') letter) `shouldBe` Right ['a', 'b', 'c']
+
     it "☯ foldL" $ do
       parse' "." (foldL (flip (:)) "" letter) `shouldBe` Right ""
       parse' "abc." (foldL (flip (:)) "" letter) `shouldBe` Right "cba"

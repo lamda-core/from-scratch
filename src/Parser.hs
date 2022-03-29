@@ -191,6 +191,9 @@ between min max parser = do
   xs <- between (min - 1) (max - 1) parser
   succeed (x : xs)
 
+-- TODO: split :: Parser delim -> Parser a -> Parser [a]
+-- TODO: until
+
 foldL :: (b -> a -> b) -> b -> Parser a -> Parser b
 foldL f initial parser =
   do
@@ -205,10 +208,6 @@ foldR f final parser =
     y <- foldR f final parser
     succeed (f x y)
     |> orElse (succeed final)
-
--- TODO: until
--- TODO: split
--- TODO: splitWithDelimiters
 
 -- Common
 integer :: Parser Int
@@ -265,7 +264,7 @@ identifier first rest = do
 -- TODO: intExp
 -- TODO: numberExp
 -- TODO: quotedText
--- TODO: collection
+-- TODO: collection : ([a] -> b) -> Parser open -> Parser a -> Parser delim -> Parser close -> Parser b
 
 -- Operator precedence
 type UnaryOperator a = (Int -> Parser a) -> Parser a
