@@ -191,7 +191,9 @@ between min max parser = do
   xs <- between (min - 1) (max - 1) parser
   succeed (x : xs)
 
--- TODO: add tests
+-- TODO: split :: Parser delim -> Parser a -> Parser [a]
+-- TODO: until
+
 foldL :: (b -> a -> b) -> b -> Parser a -> Parser b
 foldL f initial parser =
   do
@@ -199,7 +201,6 @@ foldL f initial parser =
     foldL f (f initial x) parser
     |> orElse (succeed initial)
 
--- TODO: add tests
 foldR :: (a -> b -> b) -> b -> Parser a -> Parser b
 foldR f final parser =
   do
@@ -207,10 +208,6 @@ foldR f final parser =
     y <- foldR f final parser
     succeed (f x y)
     |> orElse (succeed final)
-
--- TODO: until
--- TODO: split
--- TODO: splitWithDelimiters
 
 -- Common
 integer :: Parser Int
@@ -243,6 +240,12 @@ textCaseSensitive str =
   chain (fmap charCaseSensitive str)
     |> orElse (expected $ "the text '" <> str <> "' (case sensitive)")
 
+identifier :: Parser Char -> [Parser Char] -> Parser String
+identifier first rest = do
+  x <- first
+  xs <- zeroOrMore (oneOf rest)
+  succeed (x : xs)
+
 -- TODO: line
 -- TODO: date
 -- TODO: time
@@ -261,65 +264,74 @@ textCaseSensitive str =
 -- TODO: intExp
 -- TODO: numberExp
 -- TODO: quotedText
--- TODO: collection
+-- TODO: collection : ([a] -> b) -> Parser open -> Parser a -> Parser delim -> Parser close -> Parser b
 
 -- Operator precedence
-type UnaryOperator a = Int -> (Int -> Parser a) -> Parser (a, Int)
+type UnaryOperator a = (Int -> Parser a) -> Parser a
 
-type BinaryOperator a = a -> UnaryOperator a
+type BinaryOperator a = Int -> a -> UnaryOperator a
 
 term :: (a -> b) -> Parser a -> UnaryOperator b
-term f parser prec _ = do
+term f parser _ = do
   x <- parser
   _ <- spaces
-  succeed (f x, prec)
+  succeed (f x)
 
 prefix :: (op -> a -> a) -> Parser op -> UnaryOperator a
-prefix f op prec expr = do
+prefix f op expr = do
   op' <- op
   _ <- spaces
-  y <- expr prec
+  y <- expr 0
   _ <- spaces
-  succeed (f op' y, prec)
+  succeed (f op' y)
+
+prefixList :: (a -> b -> b) -> b -> Parser open -> Parser a -> Parser close -> Parser b
+prefixList f initial open parser close = do
+  _ <- open
+  y <- foldR f initial (do _ <- spaces; parser)
+  _ <- spaces
+  _ <- close
+  _ <- spaces
+  succeed y
 
 inbetween :: (open -> a -> a) -> Parser open -> Parser close -> UnaryOperator a
-inbetween f open close prec expr = do
+inbetween f open close expr = do
   open' <- open
   _ <- spaces
   y <- expr 0
   _ <- spaces
   _ <- close
   _ <- spaces
-  succeed (f open' y, prec)
+  succeed (f open' y)
 
 infixL :: Int -> (op -> a -> a -> a) -> Parser op -> BinaryOperator a
-infixL prec f op x lastPrec expr = do
-  _ <- assert (lastPrec < prec) ""
+infixL opPrec f op prec x expr = do
+  _ <- assert (prec < opPrec) ""
   op' <- op
   _ <- spaces
-  y <- expr prec
+  y <- expr opPrec
   _ <- spaces
-  succeed (f op' x y, lastPrec)
+  succeed (f op' x y)
 
 infixR :: Int -> (op -> a -> a -> a) -> Parser op -> BinaryOperator a
-infixR prec f op x lastPrec expr = do
-  _ <- assert (lastPrec <= prec) ""
+infixR opPrec f op prec x expr = do
+  _ <- assert (prec <= opPrec) ""
   op' <- op
   _ <- spaces
-  y <- expr prec
+  y <- expr opPrec
   _ <- spaces
-  succeed (f op' x y, lastPrec)
+  succeed (f op' x y)
 
-expression :: [Int -> (Int -> Parser a) -> Parser (a, Int)] -> [a -> Int -> (Int -> Parser a) -> Parser (a, Int)] -> Parser a
+expression :: [UnaryOperator a] -> [BinaryOperator a] -> Parser a
 expression unaryOperators binaryOperators =
-  let unary rbp expr = oneOf (fmap (\op -> op rbp expr) unaryOperators)
-      binary x rbp expr = oneOf (fmap (\op -> op x rbp expr) binaryOperators)
-      expr rbp = do
-        (x, rbp) <- unary rbp expr
-        expr2 x rbp
-      expr2 x rbp =
+  let unary f = oneOf (fmap (\op -> op f) unaryOperators)
+      binary x f prec = oneOf (fmap (\op -> op x f prec) binaryOperators)
+      expr prec = do
+        x <- unary expr
+        expr2 prec x
+      expr2 prec x =
         do
-          (y, lbp) <- binary x rbp expr
-          expr2 y lbp
+          y <- binary prec x expr
+          expr2 prec y
           |> orElse (succeed x)
    in expr 0
