@@ -8,33 +8,6 @@ coreTests = describe "--== Core ==--" $ do
   let (i0, i1, i2, i3) = (Int 0, Int 1, Int 2, Int 3)
   let (x, y, z) = (Var "x", Var "y", Var "z")
 
-  describe "☯ parse" $ do
-    it "☯ terms" $ do
-      parse "_" `shouldBe` Right Any
-      parse "()" `shouldBe` Right Tup
-      parse "(+)" `shouldBe` Right Add
-      parse "(-)" `shouldBe` Right Sub
-      parse "(-)" `shouldBe` Right Sub
-      parse "(*)" `shouldBe` Right Mul
-      parse "%I" `shouldBe` Right IntT
-      parse "1" `shouldBe` Right i1
-      parse "x" `shouldBe` Right x
-      parse "@x y" `shouldBe` Right (For "x" y)
-      parse "@x @y z" `shouldBe` Right (For "x" (For "y" z))
-      parse "x = 1; y" `shouldBe` Right (Let [("x", i1)] y)
-      parse "x = 1; y = 2; z" `shouldBe` Right (Let [("x", i1), ("y", i2)] z)
-      parse "(_)" `shouldBe` Right Any
-      parse "( _ )" `shouldBe` Right Any
-
-    it "☯ binary operators" $ do
-      parse "1 | 2" `shouldBe` Right (Or i1 i2)
-      parse "1 : 2" `shouldBe` Right (Ann i1 i2)
-      parse "1 -> 2" `shouldBe` Right (Lam i1 i2)
-      parse "1 + 2" `shouldBe` Right (add i1 i2)
-      parse "1 - 2" `shouldBe` Right (sub i1 i2)
-      parse "1 * 2" `shouldBe` Right (mul i1 i2)
-      parse "1 2" `shouldBe` Right (App i1 i2)
-
   describe "☯ helper functions" $ do
     it "☯ lam" $ do
       lam [] Tup `shouldBe` Tup
@@ -165,3 +138,63 @@ coreTests = describe "--== Core ==--" $ do
       -- Lam Pattern Expr
       -- App Expr Expr
       True `shouldBe` True
+
+  describe "☯ parse" $ do
+    it "☯ terms" $ do
+      parse "_" `shouldBe` Right Any
+      parse "()" `shouldBe` Right Tup
+      parse "(+)" `shouldBe` Right Add
+      parse "(-)" `shouldBe` Right Sub
+      parse "(-)" `shouldBe` Right Sub
+      parse "(*)" `shouldBe` Right Mul
+      parse "%I" `shouldBe` Right IntT
+      parse "1" `shouldBe` Right i1
+      parse "x" `shouldBe` Right x
+      parse "@x y" `shouldBe` Right (For "x" y)
+      parse "@x @y z" `shouldBe` Right (For "x" (For "y" z))
+      parse "x = 1; y" `shouldBe` Right (Let [("x", i1)] y)
+      parse "x = 1; y = 2; z" `shouldBe` Right (Let [("x", i1), ("y", i2)] z)
+      parse "(_)" `shouldBe` Right Any
+      parse "( _ )" `shouldBe` Right Any
+
+    it "☯ binary operators" $ do
+      parse "1 | 2" `shouldBe` Right (Or i1 i2)
+      parse "1 : 2" `shouldBe` Right (Ann i1 i2)
+      parse "1 -> 2" `shouldBe` Right (Lam i1 i2)
+      parse "1 + 2" `shouldBe` Right (add i1 i2)
+      parse "1 - 2" `shouldBe` Right (sub i1 i2)
+      parse "1 * 2" `shouldBe` Right (mul i1 i2)
+      parse "1 2" `shouldBe` Right (App i1 i2)
+
+  describe "☯ real world tests" $ do
+    it "☯ factorial (simple recursion)" $ do
+      -- factorial 0 = 1
+      -- factorial n = n * factorial (n - 1)
+      let f = Var "f"
+      let n = Var "n"
+      let case1 = Lam i0 i1
+      let case2 = For "n" (Lam n $ mul n $ App f $ sub n i1)
+      let env = [("f", case1 `Or` case2)]
+      reduce (app f [Int 0]) env `shouldBe` Right (Int 1, env)
+      reduce (app f [Int 1]) env `shouldBe` Right (Int 1, ("n", Int 1) : env)
+      -- reduce (app f [Int 2]) env `shouldBe` Right (Int 2, ("n", i2) : ("n", i1) : env)
+      True `shouldBe` True
+
+    it "☯ ackermann (complex recursion)" $ do
+      -- a 0 n = n + 1
+      -- a m 0 = a (m - 1) 1
+      -- a m n = a (m - 1) (a m (n - 1))
+      let a = Var "a"
+      let m = Var "m"
+      let n = Var "n"
+      let case1 = Lam i0 (For "n" $ Lam n $ add n i1)
+      let case2 = For "m" (Lam i0 $ app a [sub m i1, i1])
+      let case3 = For "m" (For "n" $ app a [sub m i1, app a [m, sub n i1]])
+      let env = [("a", case1 `Or` case2 `Or` case3)]
+      reduce (app a [Int 0]) env `shouldBe` Right (Lam n (add n i1), ("n", n) : env)
+      -- reduce (app a [Int 1]) env `shouldBe` Right (Lam n (add n i1), ("n", n) : env)
+      True `shouldBe` True
+
+-- TODO: map (parallelization)
+-- TODO: foldr (lazy evaluation)
+-- TODO: foldl (tail call optimization)

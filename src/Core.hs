@@ -179,8 +179,8 @@ expression = do
       term (const Mul) (text "(*)"),
       term (const IntT) (text "%I"),
       term Int integer,
-      prefix For (do _ <- char '@'; name),
-      prefix Let (oneOrMore binding),
+      prefix 7 For (do _ <- char '@'; name),
+      prefix 0 Let (oneOrMore binding),
       term Var name,
       inbetween (const id) (char '(') (char ')')
     ]
