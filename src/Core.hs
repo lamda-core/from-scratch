@@ -42,6 +42,7 @@ reduce (Var x) ((x', a) : env) | x == x' = do
 reduce (Var x) (var : env) = do
   (a, env) <- reduce (Var x) env
   Right (a, var : env)
+reduce (For x a) ((x', _) : env) | x == x' = reduce a ((x, Var x) : env)
 reduce (For x a) env = reduce a ((x, Var x) : env)
 reduce (Let env a) env' = do
   (a, _) <- reduce a env
@@ -115,6 +116,7 @@ match (Lam p q, env) (Lam a b, env') = do
 match (App p q, env) (App a b, env') = do
   (env, env') <- match (p, env) (a, env')
   match (q, env) (b, env')
+-- TODO: simplify these into top level rules
 match (p, env) (a, env') = do
   (p, env) <- reduce p env
   case (p, env) of
@@ -179,8 +181,8 @@ expression = do
       term (const Mul) (text "(*)"),
       term (const IntT) (text "%I"),
       term Int integer,
-      prefix 7 For (do _ <- char '@'; name),
-      prefix 0 Let (oneOrMore binding),
+      prefix For (do _ <- char '@'; name),
+      prefix Let (oneOrMore binding),
       term Var name,
       inbetween (const id) (char '(') (char ')')
     ]

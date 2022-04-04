@@ -44,7 +44,8 @@ coreTests = describe "--== Core ==--" $ do
       reduce x [("x", i1), ("y", i2)] `shouldBe` Right (i1, [("x", i1), ("y", i2)])
       reduce y [("x", i1), ("y", i2)] `shouldBe` Right (i2, [("x", i1), ("y", i2)])
       -- For all
-      reduce (For "x" x) [] `shouldBe` Right (x, [("x", x)])
+      reduce (For "x" x) [("y", i1), ("x", i2)] `shouldBe` Right (x, [("x", x), ("y", i1), ("x", i2)])
+      reduce (For "x" x) [("x", i1), ("y", i2)] `shouldBe` Right (x, [("x", x), ("y", i2)])
       -- Closure reduction
       reduce (Let [("x", add i0 i1)] x) [] `shouldBe` Right (i1, [])
       -- Arithmetic reduction
@@ -116,7 +117,7 @@ coreTests = describe "--== Core ==--" $ do
       eval i1 env `shouldBe` Right (i1, env)
       eval x [] `shouldBe` Left (UndefinedVariable "x")
       eval x env `shouldBe` Right (i1, [("x", i1), ("y", add i1 i1), ("z", Tup)])
-      eval (For "x" y) env `shouldBe` Right (i2, [("x", x), ("x", add i0 i1), ("y", i2), ("z", Tup)])
+      eval (For "x" y) env `shouldBe` Right (i2, [("x", x), ("y", i2), ("z", Tup)])
       eval (Or x y) env `shouldBe` Right (Or i1 i2, [("x", i1), ("y", i2), ("z", Tup)])
       eval (Ann x IntT) env `shouldBe` Right (i1, [("x", i1), ("y", add i1 i1), ("z", Tup)])
       eval (Lam x y) env `shouldBe` Right (Lam i1 i2, [("x", i1), ("y", i2), ("z", Tup)])
@@ -176,8 +177,9 @@ coreTests = describe "--== Core ==--" $ do
       let case2 = For "n" (Lam n $ mul n $ App f $ sub n i1)
       let env = [("f", case1 `Or` case2)]
       reduce (app f [Int 0]) env `shouldBe` Right (Int 1, env)
-      reduce (app f [Int 1]) env `shouldBe` Right (Int 1, ("n", Int 1) : env)
-      -- reduce (app f [Int 2]) env `shouldBe` Right (Int 2, ("n", i2) : ("n", i1) : env)
+      reduce (app f [Int 1]) env `shouldBe` Right (Int 1, ("n", i1) : env)
+      reduce (app f [Int 2]) env `shouldBe` Right (Int 2, ("n", i1) : env)
+      reduce (app f [Int 5]) env `shouldBe` Right (Int 120, ("n", i1) : env)
       True `shouldBe` True
 
     it "☯ ackermann (complex recursion)" $ do
@@ -188,11 +190,17 @@ coreTests = describe "--== Core ==--" $ do
       let m = Var "m"
       let n = Var "n"
       let case1 = Lam i0 (For "n" $ Lam n $ add n i1)
-      let case2 = For "m" (Lam i0 $ app a [sub m i1, i1])
-      let case3 = For "m" (For "n" $ app a [sub m i1, app a [m, sub n i1]])
-      let env = [("a", case1 `Or` case2 `Or` case3)]
-      reduce (app a [Int 0]) env `shouldBe` Right (Lam n (add n i1), ("n", n) : env)
-      -- reduce (app a [Int 1]) env `shouldBe` Right (Lam n (add n i1), ("n", n) : env)
+      let case2 = For "m" (Lam m $ Lam i0 $ app a [sub m i1, i1])
+      let case3 = For "m" (Lam m $ For "n" $ Lam n $ app a [sub m i1, app a [m, sub n i1]])
+      let env = [("a", Or case1 $ Or case2 case3)]
+      reduce (app a [i0]) env `shouldBe` Right (Lam n (add n i1), ("n", n) : env)
+      reduce (app a [i1]) env `shouldBe` Right (Lam i0 $ app a [sub m i1, i1], ("m", Let (("m", m) : env) i1) : env)
+      reduce (app a [i2]) env `shouldBe` Right (Lam i0 $ app a [sub m i1, i1], ("m", Let (("m", m) : env) i2) : env)
+      reduce (app a [i0, i0]) env `shouldBe` Right (Int 1, ("n", Int 0) : env)
+      reduce (app a [i0, i1]) env `shouldBe` Right (Int 2, ("n", Int 1) : env)
+      reduce (app a [i0, i2]) env `shouldBe` Right (Int 3, ("n", Int 2) : env)
+      reduce (app a [i1, i0]) env `shouldBe` Right (Int 2, ("n", Int 1) : ("m", Let (("m", m) : env) i1) : env)
+      -- reduce (app a [i1, i1]) env `shouldBe` Right (Int 2, ("n", Int 1) : ("m", Let (("m", m) : env) i1) : env)
       True `shouldBe` True
 
 -- TODO: map (parallelization)
