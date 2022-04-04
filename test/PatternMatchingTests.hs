@@ -5,7 +5,7 @@ import Test.Hspec
 
 patternMatchingTests :: SpecWith ()
 patternMatchingTests = describe "--== Pattern matching ==--" $ do
-  let (x, y, z) = (Var "x", Var "y", Var "z")
+  let (x, y) = (Var "x", Var "y")
   let (a, b, c) = (Ctr "A", Ctr "B", Ctr "C")
 
   it "☯ occurs" $ do
