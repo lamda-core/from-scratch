@@ -15,7 +15,7 @@ TODO:
 -}
 
 data Expr
-  = Err Expr
+  = Err
   | Tup
   | Add
   | Sub
@@ -23,8 +23,8 @@ data Expr
   | Int Int
   | Var String
   | Ctr String
-  | Let Env Expr
-  | Lam Pattern Expr
+  | -- | Let Env Expr
+    Lam Pattern Env Expr
   | Or Expr Expr
   | App Expr Expr
   deriving (Eq, Show)
@@ -34,59 +34,54 @@ type Pattern = Expr
 type Env = [(String, Expr)]
 
 get :: String -> Env -> Expr
-get x [] = Err (Var x)
+get _ [] = Err
 get x ((x', a) : _) | x == x' = a
 get x (_ : env) = get x env
 
 occurs :: String -> Expr -> Bool
 occurs x (Var x') | x == x' = True
-occurs x (Let [] a) = occurs x a
-occurs x (Let ((y, _) : env) a) | x /= y = occurs x (Let env a)
-occurs x (Lam p a) | not (occurs x p) = occurs x a
+-- occurs x (Let [] a) = occurs x a
+-- occurs x (Let ((y, _) : env) a) | x /= y = occurs x (Let env a)
+occurs x (Lam p _ a) | not (occurs x p) = occurs x a
 occurs x (Or a b) | occurs x a || occurs x b = True
 occurs x (App a b) | occurs x a || occurs x b = True
 occurs _ _ = False
 
--- TODO: remove explicit Env, all should be part of Let as closures
-reduce :: Expr -> Env -> (Expr, Env)
-reduce (Var x) env = reduce (get x env) env -- TODO: update env
-reduce (Let env a) env' = do
-  let (a', _) = reduce a env
-  (a', env')
-reduce (Or a b) env = case reduce a env of -- TODO: tests
-  (Err _, env) -> reduce b env
-  (Lam p a, env) -> (Or (Lam p a) b, env)
-  (a, env) -> (a, env)
-reduce (App a b) env = case reduce a env of
-  (Err a, env) -> (Err (App a b), env)
-  (Lam (Err _) a, env) -> case reduce b env of
-    (Err _, env) -> reduce a env
-    result -> result
-  (Lam (Var x) a, env) -> do
-    let (a', env') = reduce a ((x, Let env b) : env)
-    (a', tail env')
-  (Lam (Let var p) a, env) -> do
-    let (p', _) = reduce (Let var p) env
-    reduce (App (Lam p' a) b) env
-  -- TODO: Lam
-  (Lam (Or p1 p2) a, env) -> reduce (App (Or (Lam p1 a) (Lam p2 a)) b) env
-  (Lam (App p1 p2) a, env) -> case reduce b env of
-    (App b1 b2, env) -> reduce (App (Lam p1 (App (Lam p2 a) b2)) b1) env
-    (b, env) -> (Err b, env)
-  (Lam p a, env) -> case reduce b env of
-    (b, env) | p == b -> reduce a env
-    (b, env) -> (Err b, env)
-  (Or a1 a2, env) -> reduce (Or (App a1 b) (App a2 b)) env
-  (App op a, env) | op `elem` [Add, Sub, Mul] -> do
-    let (a', env1) = reduce a env
-    let (b', env2) = reduce b env1
-    case (op, a', b') of
-      (Add, Int a, Int b) -> (Int (a + b), env2)
-      (Sub, Int a, Int b) -> (Int (a - b), env2)
-      (Mul, Int a, Int b) -> (Int (a * b), env2)
-      (op, a, b) -> (App (App op a) b, env2)
-  (a, env) -> (App a b, env)
-reduce a env = (a, env)
+reduce :: Expr -> Expr
+-- reduce (Lam p a) = Lam p (Let [] a)
+-- reduce (Let env (Var x)) = reduce (Let env (get x env))
+-- reduce (Let _ (Let env a)) = reduce (Let env a)
+-- reduce (Let env (Lam p a)) = Lam p (Let env a)
+-- reduce (Let env (Or a b)) = case reduce (Let env a) of
+--   Err -> reduce (Let env b)
+--   Lam p a -> Or (Lam p a) (Let env b)
+--   a -> a
+-- reduce (Let env (App a b)) = case reduce (Let env a) of
+--   Err -> Err
+--   Lam (Var x) (Let env' a) -> reduce (Let ((x, Let env b) : env') a)
+--   Lam (Let env' p) a -> do
+--     let p' = reduce (Let env' p)
+--     reduce (Let env (App (Lam p' a) b))
+--   -- TODO: Lam
+--   Lam (Or p1 p2) a -> reduce (Let env (App (Or (Lam p1 a) (Lam p2 a)) b))
+--   Lam (App p1 p2) a -> case reduce (Let env b) of
+--     App b1 b2 -> reduce (Let env (App (Lam p1 (App (Lam p2 a) b2)) b1))
+--     _ -> Err
+--   Lam p a -> case reduce (Let env b) of
+--     b | p == b -> reduce (Let env a)
+--     _ -> Err
+--   Or a1 a2 -> reduce (Let env (Or (App a1 b) (App a2 b)))
+--   App op a | op `elem` [Add, Sub, Mul] -> do
+--     let a' = reduce (Let env a)
+--     let b' = reduce (Let env b)
+--     case (op, a', b') of
+--       (Add, Int a, Int b) -> Int (a + b)
+--       (Sub, Int a, Int b) -> Int (a - b)
+--       (Mul, Int a, Int b) -> Int (a * b)
+--       (op, a, b) -> App (App op a) b
+--   a -> App a (Let env b)
+-- reduce (Let _ a) = a
+reduce a = a
 
 -- Helper functions / syntax sugar
 lam :: [Expr] -> Expr -> Expr
