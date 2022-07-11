@@ -1,105 +1,217 @@
 module Core where
 
-{-
-Referenes:
-- Pattern Matching Calculus: Lamdas with arbitrary patterns
-  https://www.cas.mcmaster.ca/~kahl/PMC/
-- Pure Pattern Calculus: Application as a pattern
-  https://link.springer.com/content/pdf/10.1007%2F11693024_8.pdf
-- Closure Calculus: Environment as part of expressions
-  https://blog.chewxy.com/wp-content/uploads/personal/dissertation31482.pdf
+import Data.List (delete, find, union)
+import Data.Maybe (fromMaybe)
+import Parser (Parser)
+import qualified Parser as P
+import Text.Read (readMaybe)
 
-TODO:
-- Add more descriptive error messages
-- Define a human-readable syntax and create a parser and writer
--}
+-- Bidirectional type checking: https://youtu.be/utyBNDj7s2w
+-- https://www.cse.iitk.ac.in/users/ppk/teaching/cs653/notes/lectures/Lambda-calculus.lhs.pdf
+
+type Variable = String
+
+type Constructor = String
 
 data Expr
-  = Err Expr
-  | Tup
-  | Add
-  | Sub
-  | Mul
+  = Var Variable
   | Int Int
-  | Var String
-  | Ctr String
-  | Let Env Expr
-  | Lam Pattern Expr
-  | Or Expr Expr
   | App Expr Expr
+  | Lam Variable Expr
+  | Op2 BinaryOperator
   deriving (Eq, Show)
 
-type Pattern = Expr
+data BinaryOperator
+  = Add
+  | Sub
+  | Mul
+  | Eq
+  deriving (Eq, Show)
 
-type Env = [(String, Expr)]
+data Pattern
+  = PAny
+  | PVar Variable
+  | PInt Int
+  | PCtr Constructor [Pattern]
+  deriving (Eq, Show)
 
-get :: String -> Env -> Expr
-get x [] = Err (Var x)
-get x ((x', a) : _) | x == x' = a
-get x (_ : env) = get x env
+type Context = Constructor -> Maybe [(Constructor, [Variable])]
 
-occurs :: String -> Expr -> Bool
-occurs x (Var x') | x == x' = True
-occurs x (Let [] a) = occurs x a
-occurs x (Let ((y, _) : env) a) | x /= y = occurs x (Let env a)
-occurs x (Lam p a) | not (occurs x p) = occurs x a
-occurs x (Or a b) | occurs x a || occurs x b = True
-occurs x (App a b) | occurs x a || occurs x b = True
-occurs _ _ = False
+newtype Error
+  = SyntaxError P.Error
+  deriving (Eq, Show)
 
--- TODO: remove explicit Env, all should be part of Let as closures
-reduce :: Expr -> Env -> (Expr, Env)
-reduce (Var x) env = reduce (get x env) env -- TODO: update env
-reduce (Let env a) env' = do
-  let (a', _) = reduce a env
-  (a', env')
-reduce (Or a b) env = case reduce a env of -- TODO: tests
-  (Err _, env) -> reduce b env
-  (Lam p a, env) -> (Or (Lam p a) b, env)
-  (a, env) -> (a, env)
-reduce (App a b) env = case reduce a env of
-  (Err a, env) -> (Err (App a b), env)
-  (Lam (Err _) a, env) -> case reduce b env of
-    (Err _, env) -> reduce a env
-    result -> result
-  (Lam (Var x) a, env) -> do
-    let (a', env') = reduce a ((x, Let env b) : env)
-    (a', tail env')
-  (Lam (Let var p) a, env) -> do
-    let (p', _) = reduce (Let var p) env
-    reduce (App (Lam p' a) b) env
-  -- TODO: Lam
-  (Lam (Or p1 p2) a, env) -> reduce (App (Or (Lam p1 a) (Lam p2 a)) b) env
-  (Lam (App p1 p2) a, env) -> case reduce b env of
-    (App b1 b2, env) -> reduce (App (Lam p1 (App (Lam p2 a) b2)) b1) env
-    (b, env) -> (Err b, env)
-  (Lam p a, env) -> case reduce b env of
-    (b, env) | p == b -> reduce a env
-    (b, env) -> (Err b, env)
-  (Or a1 a2, env) -> reduce (Or (App a1 b) (App a2 b)) env
-  (App op a, env) | op `elem` [Add, Sub, Mul] -> do
-    let (a', env1) = reduce a env
-    let (b', env2) = reduce b env1
-    case (op, a', b') of
-      (Add, Int a, Int b) -> (Int (a + b), env2)
-      (Sub, Int a, Int b) -> (Int (a - b), env2)
-      (Mul, Int a, Int b) -> (Int (a * b), env2)
-      (op, a, b) -> (App (App op a) b, env2)
-  (a, env) -> (App a b, env)
-reduce a env = (a, env)
+(|>) :: a -> (a -> b) -> b
+(|>) x f = f x
 
--- Helper functions / syntax sugar
-lam :: [Expr] -> Expr -> Expr
-lam xs a = foldr Lam a xs
+infixl 1 |>
 
 app :: Expr -> [Expr] -> Expr
 app = foldl App
 
+lam :: [Variable] -> Expr -> Expr
+lam xs a = foldr Lam a xs
+
 add :: Expr -> Expr -> Expr
-add a b = app Add [a, b]
+add a b = app (Op2 Add) [a, b]
 
 sub :: Expr -> Expr -> Expr
-sub a b = app Sub [a, b]
+sub a b = app (Op2 Sub) [a, b]
 
 mul :: Expr -> Expr -> Expr
-mul a b = app Mul [a, b]
+mul a b = app (Op2 Mul) [a, b]
+
+eq :: Expr -> Expr -> Expr
+eq a b = app (Op2 Eq) [a, b]
+
+if' :: Expr -> Expr -> Expr -> Expr
+if' cond then' else' = app cond [then', else']
+
+-- Constructor alternatives
+ctrAlts :: Constructor -> Context -> Maybe [Constructor]
+ctrAlts ctr ctx = do
+  ctrs <- ctx ctr
+  Just (map fst ctrs)
+
+-- Constructor arguments
+ctrArgs :: Constructor -> Context -> Maybe [Variable]
+ctrArgs ctr ctx = do
+  ctrs <- ctx ctr
+  (_, xs) <- find (\(c, _) -> c == ctr) ctrs
+  Just xs
+
+caseFind :: [(Constructor, [Variable], Expr)] -> Expr -> Constructor -> Expr
+caseFind cases default' c = case find (\(c', _, _) -> c == c') cases of
+  Just (_, xs, a) -> lam xs a
+  Nothing -> default'
+
+case' :: Expr -> [(Constructor, [Variable], Expr)] -> Expr -> Context -> Expr
+case' _ [] default' _ = default'
+case' a cases@((ctr, _, _) : _) default' ctx = case ctrAlts ctr ctx of
+  Just ctrs -> app a (map (caseFind cases default') ctrs)
+  Nothing -> default'
+
+nameIndex :: String -> String -> Maybe Int
+nameIndex "" x = readMaybe x
+nameIndex (c : prefix) (c' : x) | c == c' = nameIndex prefix x
+nameIndex _ _ = Nothing
+
+findLastNameIndex :: String -> [String] -> Maybe Int
+findLastNameIndex _ [] = Nothing
+findLastNameIndex prefix (x : xs) = case findLastNameIndex prefix xs of
+  Just i -> case nameIndex prefix x of
+    Just j -> Just (max i j)
+    Nothing -> Just i
+  Nothing -> if prefix == x then Just 0 else nameIndex prefix x
+
+freeVariables :: Expr -> [String]
+freeVariables (Var x) = [x]
+freeVariables (App a b) = freeVariables a `union` freeVariables b
+freeVariables (Lam x a) = delete x (freeVariables a)
+freeVariables _ = []
+
+newName :: [String] -> String -> String
+newName used x = case findLastNameIndex x used of
+  Just i -> x ++ show (i + 1)
+  Nothing -> x
+
+newNames :: [String] -> [String] -> [String]
+newNames _ [] = []
+newNames used (x : xs) = let y = newName used x in y : newNames (y : used) xs
+
+patternName :: Pattern -> Maybe Variable
+patternName (PVar x) = Just x
+patternName _ = Nothing
+
+renamePatterns :: [Pattern] -> [Variable] -> Expr -> Expr
+renamePatterns (PVar x : ps) (y : ys) a | x /= y = substitute x (Var y) (renamePatterns ps ys a)
+renamePatterns (_ : ps) (_ : ys) a = renamePatterns ps ys a
+renamePatterns _ _ a = a
+
+pathToCase :: Context -> ([Pattern], Expr) -> Maybe (Constructor, [Variable], Expr)
+pathToCase ctx (PCtr c ps : _, a) = do
+  args <- ctrArgs c ctx
+  let usedNames = freeVariables (lam (filterMap patternName ps) a)
+  let names = zipWith (\x p -> fromMaybe x (patternName p)) args ps
+  let xs = newNames usedNames names
+  Just (c, xs, renamePatterns ps xs a)
+pathToCase _ _ = Nothing
+
+matchAny :: Expr -> [([Pattern], Expr)] -> [([Pattern], Expr)]
+matchAny _ [] = []
+matchAny a ((PAny : ps, b) : paths) = (ps, b) : matchAny a paths
+matchAny a ((PVar x : ps, b) : paths) = (ps, substitute x a b) : matchAny a paths
+matchAny a (_ : paths) = matchAny a paths
+
+match :: [Expr] -> [([Pattern], Expr)] -> Expr -> Context -> Expr
+match [] ((_, body) : _) _ _ = body
+match args [] default' _ = lam (map (const "") args) default'
+match (arg : args) ((PInt i : ps, body) : paths) default' ctx =
+  if' (eq arg (Int i)) (match args [(ps, body)] default' ctx) (match (arg : args) paths default' ctx)
+match (arg : args) paths default' ctx =
+  case' arg (filterMap (pathToCase ctx) paths) (match args (matchAny arg paths) default' ctx) ctx
+
+-- TODO: let' -- allow to define mutually recursive functions and pattern destructuring
+-- let' :: [(Pattern, Expr)] -> Expr -> Context -> Expr
+
+substitute :: Variable -> Expr -> Expr -> Expr
+substitute x a (Var x') | x == x' = a
+substitute x a (App b c) = App (substitute x a b) (substitute x a c)
+substitute x a (Lam y b) | x /= y = Lam y (substitute x a b)
+substitute _ _ b = b
+
+filterMap :: (a -> Maybe b) -> [a] -> [b]
+filterMap _ [] = []
+filterMap f (x : xs) = case f x of
+  Just y -> y : filterMap f xs
+  Nothing -> filterMap f xs
+
+-- == Parser == --
+parse :: String -> Either Error Expr
+parse text = case P.parse text parseExpr of
+  Left err -> Left (SyntaxError err)
+  Right ast -> Right ast
+
+parseExpr :: Parser Expr
+parseExpr =
+  P.expression
+    [ P.term Var parseVariable,
+      P.term Int P.integer,
+      P.term (uncurry lam) parseLambda,
+      P.term Op2 parseBinaryOperator
+    ]
+    [ P.infixL 1 (const add) (P.char '+'),
+      P.infixL 1 (const sub) (P.char '-'),
+      P.infixL 2 (const mul) (P.char '*'),
+      P.infixL 3 (const App) P.spaces
+    ]
+
+parseVariable :: Parser String
+parseVariable = do
+  c <- P.oneOf [P.letter, P.char '_']
+  cs <- P.zeroOrMore (P.oneOf [P.alphanumeric, P.char '_'])
+  P.succeed (c : cs)
+
+parseLambda :: Parser ([String], Expr)
+parseLambda = do
+  _ <- P.char '\\'
+  xs <- P.zeroOrMore (do _ <- P.spaces; parseVariable)
+  _ <- P.spaces
+  _ <- P.text "->"
+  _ <- P.spaces
+  a <- parseExpr
+  P.succeed (xs, a)
+
+parseBinaryOperator :: Parser BinaryOperator
+parseBinaryOperator = do
+  _ <- P.char '('
+  _ <- P.spaces
+  op <-
+    P.oneOf
+      [ fmap (const Add) (P.char '+'),
+        fmap (const Sub) (P.char '-'),
+        fmap (const Mul) (P.char '*')
+      ]
+  _ <- P.spaces
+  _ <- P.char ')'
+  P.succeed op
