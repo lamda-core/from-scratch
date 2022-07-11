@@ -1,8 +1,11 @@
 module Core where
 
-import Data.List (find)
+import Data.List (delete, find, union)
+import Data.Maybe (fromMaybe)
+import Text.Read (readMaybe)
 
 -- Bidirectional type checking: https://youtu.be/utyBNDj7s2w
+-- https://www.cse.iitk.ac.in/users/ppk/teaching/cs653/notes/lectures/Lambda-calculus.lhs.pdf
 
 type Variable = String
 
@@ -30,7 +33,12 @@ data Pattern
   | PCtr Constructor [Pattern]
   deriving (Eq, Show)
 
-type Context = Constructor -> Maybe [Constructor]
+type Context = Constructor -> Maybe [(Constructor, [Variable])]
+
+(|>) :: a -> (a -> b) -> b
+(|>) x f = f x
+
+infixl 1 |>
 
 app :: Expr -> [Expr] -> Expr
 app = foldl App
@@ -53,21 +61,89 @@ eq a b = app (Op2 Eq) [a, b]
 if' :: Expr -> Expr -> Expr -> Expr
 if' cond then' else' = app cond [then', else']
 
+-- Constructor alternatives
+ctrAlts :: Constructor -> Context -> Maybe [Constructor]
+ctrAlts ctr ctx = do
+  ctrs <- ctx ctr
+  Just (map fst ctrs)
+
+-- Constructor arguments
+ctrArgs :: Constructor -> Context -> Maybe [Variable]
+ctrArgs ctr ctx = do
+  ctrs <- ctx ctr
+  (_, xs) <- find (\(c, _) -> c == ctr) ctrs
+  Just xs
+
+caseFind :: [(Constructor, [Variable], Expr)] -> Expr -> Constructor -> Expr
+caseFind cases default' c = case find (\(c', _, _) -> c == c') cases of
+  Just (_, xs, a) -> lam xs a
+  Nothing -> default'
+
 case' :: Expr -> [(Constructor, [Variable], Expr)] -> Expr -> Context -> Expr
-case' a cases default' ctx = do
-  -- TODO: usie types to list constructors -- listCtrs :: Expr -> Context -> Maybe [Constructor]
-  let listCtrs :: [(Constructor, [Variable], Expr)] -> Context -> Maybe [Constructor]
-      listCtrs [] _ = Nothing
-      listCtrs ((ctr, _, _) : _) ctx = ctx ctr
+case' _ [] default' _ = default'
+case' a cases@((ctr, _, _) : _) default' ctx = case ctrAlts ctr ctx of
+  Just ctrs -> app a (map (caseFind cases default') ctrs)
+  Nothing -> default'
 
-      findCtr :: Constructor -> [(Constructor, [Variable], Expr)] -> Expr -> Expr
-      findCtr c cases default' = case find (\(c', _, _) -> c == c') cases of
-        Just (_, xs, a) -> lam xs a
-        Nothing -> default'
+nameIndex :: String -> String -> Maybe Int
+nameIndex "" x = readMaybe x
+nameIndex (c : prefix) (c' : x) | c == c' = nameIndex prefix x
+nameIndex _ _ = Nothing
 
-  case listCtrs cases ctx of
-    Just ctrs -> app a (map (\c -> findCtr c cases default') ctrs)
-    Nothing -> default'
+findLastNameIndex :: String -> [String] -> Maybe Int
+findLastNameIndex _ [] = Nothing
+findLastNameIndex prefix (x : xs) = case findLastNameIndex prefix xs of
+  Just i -> case nameIndex prefix x of
+    Just j -> Just (max i j)
+    Nothing -> Just i
+  Nothing -> if prefix == x then Just 0 else nameIndex prefix x
+
+freeVariables :: Expr -> [String]
+freeVariables (Var x) = [x]
+freeVariables (App a b) = freeVariables a `union` freeVariables b
+freeVariables (Lam x a) = delete x (freeVariables a)
+freeVariables _ = []
+
+newName :: [String] -> String -> String
+newName used x = case findLastNameIndex x used of
+  Just i -> x ++ show (i + 1)
+  Nothing -> x
+
+newNames :: [String] -> [String] -> [String]
+newNames _ [] = []
+newNames used (x : xs) = let y = newName used x in y : newNames (y : used) xs
+
+patternName :: Pattern -> Maybe Variable
+patternName (PVar x) = Just x
+patternName _ = Nothing
+
+renamePatterns :: [Pattern] -> [Variable] -> Expr -> Expr
+renamePatterns (PVar x : ps) (y : ys) a | x /= y = substitute x (Var y) (renamePatterns ps ys a)
+renamePatterns (_ : ps) (_ : ys) a = renamePatterns ps ys a
+renamePatterns _ _ a = a
+
+pathToCase :: Context -> ([Pattern], Expr) -> Maybe (Constructor, [Variable], Expr)
+pathToCase ctx (PCtr c ps : _, a) = do
+  args <- ctrArgs c ctx
+  let usedNames = freeVariables (lam (filterMap patternName ps) a)
+  let names = zipWith (\x p -> fromMaybe x (patternName p)) args ps
+  let xs = newNames usedNames names
+  Just (c, xs, renamePatterns ps xs a)
+pathToCase _ _ = Nothing
+
+matchAny :: Expr -> [([Pattern], Expr)] -> [([Pattern], Expr)]
+matchAny _ [] = []
+matchAny a ((PAny : ps, b) : paths) = (ps, b) : matchAny a paths
+matchAny a ((PVar x : ps, b) : paths) = (ps, substitute x a b) : matchAny a paths
+matchAny a (_ : paths) = matchAny a paths
+
+match :: [Expr] -> [([Pattern], Expr)] -> Expr -> Context -> Expr
+match [] ((_, body) : _) _ _ = body
+match args [] default' _ = lam (map (const "") args) default'
+match (arg : args) ((PInt i : ps, body) : paths) default' ctx =
+  if' (eq arg (Int i)) (match args [(ps, body)] default' ctx) (match (arg : args) paths default' ctx)
+match (arg : args) paths default' ctx =
+  case' arg (filterMap (pathToCase ctx) paths) (match args (matchAny arg paths) default' ctx) ctx
 
 substitute :: Variable -> Expr -> Expr -> Expr
 substitute x a (Var x') | x == x' = a
@@ -75,51 +151,11 @@ substitute x a (App b c) = App (substitute x a b) (substitute x a c)
 substitute x a (Lam y b) | x /= y = Lam y (substitute x a b)
 substitute _ _ b = b
 
-match :: [Expr] -> [([Pattern], Expr)] -> Expr -> Context -> Expr
-match [] ((_, body) : _) _ _ = body
-match args [] default' _ = lam (map (const "") args) default'
-match (arg : args) ((PInt i : ps, body) : paths) default' ctx =
-  if' (eq arg (Int i)) (match args [(ps, body)] default' ctx) (match (arg : args) paths default' ctx)
-match (arg : args) paths default' ctx = do
-  let listCtrs :: [([Pattern], Expr)] -> [(Constructor, Int)]
-      listCtrs [] = []
-      listCtrs ((PCtr c qs : _, _) : paths) = case listCtrs paths of
-        ctrs | c `elem` map fst ctrs -> ctrs
-        ctrs -> (c, length qs) : ctrs
-      listCtrs (_ : paths) = listCtrs paths
-
-      rename :: [Variable] -> ([Pattern], Expr) -> ([Pattern], Expr)
-      rename [] (ps, a) = (ps, a)
-      rename xs ([], a) = (map PVar xs, a)
-      rename (x : xs) (PVar y : ps, a) = let (ps', a') = rename xs (ps, a) in (PVar x : ps', substitute y (Var x) a')
-      rename (_ : xs) (p : ps, a) = let (ps', a') = rename xs (ps, a) in (p : ps', a')
-
-      rename' :: [Variable] -> [Pattern] -> Expr -> Expr
-      rename' [] _ a = a
-      rename' _ [] a = a
-      rename' (x : xs) (PVar y : ps) a | x /= y = rename' xs ps (substitute y (Var x) a)
-      rename' (_ : xs) (_ : ps) a = rename' xs ps a
-
-      -- TODO: actually use `filter` and compose with simpler functions for `filterAny` and `filterCtr`
-      filterAny :: [([Pattern], Expr)] -> [([Pattern], Expr)]
-      filterAny [] = []
-      filterAny ((PAny : ps, body) : paths) = (ps, body) : filterAny paths
-      filterAny ((PVar x : ps, body) : paths) = (ps, substitute x arg body) : filterAny paths
-      filterAny (_ : paths) = filterAny paths
-
-      filterCtr :: Constructor -> [Variable] -> [([Pattern], Expr)] -> [([Pattern], Expr)]
-      filterCtr _ _ [] = []
-      filterCtr c xs ((PAny : ps, body) : paths) = (map PVar xs ++ ps, body) : filterCtr c xs paths
-      filterCtr c xs ((PVar x : ps, body) : paths) = (map PVar xs ++ ps, substitute x arg body) : filterCtr c xs paths
-      filterCtr c xs ((PCtr c' qs : ps, body) : paths) | c == c' = rename xs (qs ++ ps, body) : filterCtr c xs paths
-      filterCtr c xs (_ : paths) = filterCtr c xs paths
-
-      toCase :: (Constructor, Int) -> (Constructor, [Variable], Expr)
-      toCase (c, n) = do
-        let xs = ["%" ++ show i | i <- [1 .. n]] -- TODO: make sure these are unique
-        (c, xs, match args (filterCtr c xs paths) default' ctx)
-
-  case' arg (map toCase (listCtrs paths)) (match args (filterAny paths) default' ctx) ctx
+filterMap :: (a -> Maybe b) -> [a] -> [b]
+filterMap _ [] = []
+filterMap f (x : xs) = case f x of
+  Just y -> y : filterMap f xs
+  Nothing -> filterMap f xs
 
 -- fix :: Expr -> Expr
 -- fix = App Fix
