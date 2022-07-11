@@ -3,130 +3,153 @@ module CoreTests where
 import Core
 import Test.Hspec
 
+ctx :: Context
+ctx "Nil" = Just ["Nil", "Cons"]
+ctx "Cons" = Just ["Nil", "Cons"]
+ctx _ = Nothing
+
 coreTests :: SpecWith ()
-coreTests = describe "--== Core ==--" $ do
-  let (i0, i1, i2) = (Int 0, Int 1, Int 2)
-  let (x, y, z) = (Var "x", Var "y", Var "z")
-  let (a, b, c) = (Ctr "A", Ctr "B", Ctr "C")
+coreTests = describe "--== Core language ==--" $ do
+  it "☯ app" $ do
+    app (Var "x") [] `shouldBe` Var "x"
+    app (Var "x") [Var "y"] `shouldBe` App (Var "x") (Var "y")
+    app (Var "x") [Var "y", Var "z"] `shouldBe` App (App (Var "x") (Var "y")) (Var "z")
 
-  it "☯ occurs" $ do
-    occurs "x" (Err (Var "x")) `shouldBe` False
-    occurs "x" (Var "x") `shouldBe` True
-    occurs "x" (Var "y") `shouldBe` False
-    occurs "x" (Ctr "x") `shouldBe` False
-    occurs "x" (Let [("x", a)] x) `shouldBe` False
-    occurs "x" (Let [("y", a)] x) `shouldBe` True
-    occurs "x" (Lam x x) `shouldBe` False
-    occurs "x" (Lam y y) `shouldBe` False
-    occurs "x" (Lam y x) `shouldBe` True
-    occurs "x" (Or y y) `shouldBe` False
-    occurs "x" (Or x y) `shouldBe` True
-    occurs "x" (Or y x) `shouldBe` True
-    occurs "x" (App y y) `shouldBe` False
-    occurs "x" (App x y) `shouldBe` True
-    occurs "x" (App y x) `shouldBe` True
+  it "☯ lam" $ do
+    lam [] (Int 1) `shouldBe` Int 1
+    lam ["x"] (Int 1) `shouldBe` Lam "x" (Int 1)
+    lam ["x", "y"] (Int 1) `shouldBe` Lam "x" (Lam "y" (Int 1))
 
-  it "☯ constants" $ do
-    reduce (Err x) [] `shouldBe` (Err x, [])
-    reduce i0 [] `shouldBe` (i0, [])
-    reduce a [] `shouldBe` (a, [])
-  it "☯ variables" $ do
-    reduce x [("x", a)] `shouldBe` (a, [("x", a)])
-    reduce y [("x", a)] `shouldBe` (Err y, [("x", a)])
-  it "☯ closures" $ do
-    reduce (Let [("x", a)] x) [("y", b)] `shouldBe` (a, [("y", b)])
-    reduce (Let [("x", a)] y) [("y", b)] `shouldBe` (Err y, [("y", b)])
-  it "☯ environment propagation" $ do
-    reduce (Lam x y) [("x", a)] `shouldBe` (Lam x y, [("x", a)])
-  -- reduce (Or x y) [("x", a)] `shouldBe` (Or x y, [("x", a)])
-  it "☯ error propagation" $ do
-    reduce (App x b) [("x", Err a)] `shouldBe` (Err (App a b), [("x", Err a)])
-  it "☯ application" $ do
-    reduce (App x a) [("x", Tup)] `shouldBe` (App Tup a, [("x", Tup)])
-    reduce (App x i0) [("x", Add)] `shouldBe` (App Add i0, [("x", Add)])
-    reduce (App x b) [("x", a)] `shouldBe` (App a b, [("x", a)])
-    reduce (App x c) [("x", App a b)] `shouldBe` (App (App a b) c, [("x", App a b)])
-  it "☯ arithmetic reductions" $ do
-    reduce (add x x) [("x", a)] `shouldBe` (add a a, [("x", a)])
-    reduce (add x x) [("x", i1)] `shouldBe` (i2, [("x", i1)])
-    reduce (sub x x) [("x", i1)] `shouldBe` (i0, [("x", i1)])
-    reduce (mul x x) [("x", i1)] `shouldBe` (i1, [("x", i1)])
-  it "☯ error recovery" $ do
-    reduce (App (Lam (Err a) b) x) [("x", Err c)] `shouldBe` (b, [("x", Err c)])
-  it "☯ constant matching" $ do
-    reduce (App (Lam a b) x) [("x", a)] `shouldBe` (b, [("x", a)])
-    reduce (App (Lam a b) x) [("x", b)] `shouldBe` (Err b, [("x", b)])
-  it "☯ variable binding" $ do
-    reduce (App (Lam y y) x) [("x", a)] `shouldBe` (a, [("x", a)])
-  it "☯ pattern evaluation" $ do
-    reduce (App (Lam (Let [("y", a)] y) b) x) [("x", a)] `shouldBe` (b, [("x", a)])
-  -- TODO: pattern Lam
-  it "☯ application matching" $ do
-    reduce (App (Lam (App x y) x) x) [("x", App a b)] `shouldBe` (a, [("x", App a b)])
-    reduce (App (Lam (App x y) y) x) [("x", App a b)] `shouldBe` (b, [("x", App a b)])
-    reduce (App (Lam (App x y) y) x) [("x", a)] `shouldBe` (Err a, [("x", a)])
-  it "☯ argument reduction" $ do
-    reduce (App (Lam i1 a) x) [("x", add i0 i1)] `shouldBe` (a, [("x", add i0 i1)])
-    reduce (App (Lam i2 a) x) [("x", add i0 i1)] `shouldBe` (Err i1, [("x", add i0 i1)])
-  it "☯ case alternation" $ do
-    reduce (App (Or (Lam a b) (Lam b c)) x) [("x", a)] `shouldBe` (b, [("x", a)])
-    reduce (App (Or (Lam a b) (Lam b c)) x) [("x", b)] `shouldBe` (c, [("x", b)])
-    reduce (App (Or (Lam a b) (Lam b c)) x) [("x", c)] `shouldBe` (Err c, [("x", c)])
-  it "☯ pattern alternation" $ do
-    reduce (App (Lam (Or a b) c) x) [("x", a)] `shouldBe` (c, [("x", a)])
-    reduce (App (Lam (Or a b) c) x) [("x", b)] `shouldBe` (c, [("x", b)])
-    reduce (App (Lam (Or a b) c) x) [("x", c)] `shouldBe` (Err c, [("x", c)])
+  it "☯ built-in operators" $ do
+    add (Var "x") (Var "y") `shouldBe` app (Op2 Add) [Var "x", Var "y"]
+    sub (Var "x") (Var "y") `shouldBe` app (Op2 Sub) [Var "x", Var "y"]
+    mul (Var "x") (Var "y") `shouldBe` app (Op2 Mul) [Var "x", Var "y"]
+    eq (Var "x") (Var "y") `shouldBe` app (Op2 Eq) [Var "x", Var "y"]
 
-  it "☯ syntax sugar" $ do
-    lam [] Tup `shouldBe` Tup
-    lam [x] Tup `shouldBe` Lam x Tup
-    lam [x, y, z] Tup `shouldBe` Lam x (Lam y (Lam z Tup))
-    app Tup [] `shouldBe` Tup
-    app Tup [x] `shouldBe` App Tup x
-    app Tup [x, y, z] `shouldBe` App (App (App Tup x) y) z
-    add x y `shouldBe` App (App Add x) y
-    sub x y `shouldBe` App (App Sub x) y
-    mul x y `shouldBe` App (App Mul x) y
+  it "☯ if" $ do
+    if' (Var "x") (Var "y") (Var "z") `shouldBe` app (Var "x") [Var "y", Var "z"]
 
-  it "☯ factorial (simple recursion)" $ do
-    -- f 0 = 1
-    -- f n = n * f (n - 1)
-    let f = Var "f"
-    let n = Var "n"
-    let case1 = Lam i0 i1
-    let case2 = Lam n (mul n $ App f $ sub n i1)
-    let env = [("f", Or case1 case2)]
-    reduce (app f [Int 0]) env `shouldBe` (Int 1, env)
-    reduce (app f [Int 1]) env `shouldBe` (Int 1, env)
-    reduce (app f [Int 2]) env `shouldBe` (Int 2, env)
-    reduce (app f [Int 5]) env `shouldBe` (Int 120, env)
+  it "☯ case" $ do
+    case' (Var "a") [] (Int 0) ctx `shouldBe` Int 0
+    case' (Var "a") [("Nil", [], Int 1)] (Int 0) ctx `shouldBe` app (Var "a") [Int 1, Int 0]
+    case' (Var "a") [("Nil", [], Int 1), ("Cons", ["x", "xs"], Int 2)] (Int 0) ctx `shouldBe` app (Var "a") [Int 1, lam ["x", "xs"] (Int 2)]
+    case' (Var "a") [("Cons", ["x", "xs"], Int 2), ("Nil", [], Int 1)] (Int 0) ctx `shouldBe` app (Var "a") [Int 1, lam ["x", "xs"] (Int 2)]
+
+  it "☯ match" $ do
+    match [] [] (Int 0) ctx `shouldBe` Int 0
+    match [] [([], Var "x")] (Int 0) ctx `shouldBe` Var "x"
+    match [Var "a"] [] (Int 0) ctx `shouldBe` Lam "" (Int 0)
+    match [Var "a", Var "b"] [] (Int 0) ctx `shouldBe` lam ["", ""] (Int 0)
+    match [Var "a"] [([PAny], Var "x")] (Int 0) ctx `shouldBe` Var "x"
+    match [Var "a"] [([PVar "x"], Var "x")] (Int 0) ctx `shouldBe` Var "a"
+    match [Var "a"] [([PCtr "Unknown" []], Var "x")] (Int 0) ctx `shouldBe` Int 0
+    match [Var "a"] [([PCtr "Nil" []], Var "x")] (Int 0) ctx `shouldBe` app (Var "a") [Var "x", Int 0]
+    match [Var "a"] [([PCtr "Cons" [PVar "x", PVar "xs"]], Var "x")] (Int 0) ctx `shouldBe` app (Var "a") [Int 0, lam ["%1", "%2"] (Var "%1")]
+    match [Var "a"] [([PCtr "Cons" [PVar "xs", PVar "x"]], Var "xs")] (Int 0) ctx `shouldBe` app (Var "a") [Int 0, lam ["%1", "%2"] (Var "%1")]
     True `shouldBe` True
 
-  -- env = {n = 2, f = 0 -> 1 | n -> n * f (n-1)}
-  -- (n -> n * f (n-1)) (n-1)
-  -- n = (n=2; f=..; n-1); n * f (n-1)
+-- it "☯ matchToCase" $ do
+--   matchToCase [] [] (Int 0) `shouldBe` Int 0
+--   matchToCase [] [([PAny], Var "x")] (Int 0) `shouldBe` Var "x"
+--   matchToCase [Int 1, Int 2] [([PAny, PVar "y"], Var "x"), ([PAny, PVar "y"], Var "y")] (Int 0) `shouldBe` Case (Int 1) [] (Match [Int 2] [([PVar "y"], Var "x"), ([PVar "y"], Var "y")] (Int 0))
+--   matchToCase [Int 1, Int 2] [([PVar "x", PVar "y"], Var "x"), ([PVar "x", PVar "y"], Var "y")] (Int 0) `shouldBe` Case (Int 1) [] (Match [Int 2] [([PVar "y"], Int 1), ([PVar "y"], Var "y")] (Int 0))
+--   -- matchToCase [Int 1, Int 2] [([PCtr "Nil" [], PVar "y"], Var "x"), ([PCtr "Cons" [PVar "x1", PVar "x2"], PVar "y"], Var "y")] (Int 0)
+--   --   `shouldBe` Case (Int 1) [("Nil", Match [Int 2] [([PVar "y"], Var "x")] (Int 0)), ("Cons", Lam ["x", "xs"] (Match [Var "x", Var "xs", Int 2] [([PVar "x1", PVar "x2", PVar "y"], Var "y")] (Int 0)))] (Match [Int 2] [] (Int 0))
+--   matchToCase [Int 1, Int 2] [([PInt 3, PVar "y"], Var "x"), ([PInt 4, PVar "y"], Var "y")] (Int 0)
+--     `shouldBe` If (eq (Int 1) (Int 3)) (Match [Int 2] [([PVar "y"], Var "x")] (Int 0)) (Match [Int 1, Int 2] [([PInt 4, PVar "y"], Var "y")] (Int 0))
 
-  it "☯ ackermann (complex recursion)" $ do
-    -- a 0 n = n + 1
-    -- a m 0 = a (m - 1) 1
-    -- a m n = a (m - 1) (a m (n - 1))
-    let a = Var "a"
-    let m = Var "m"
-    let n = Var "n"
-    let case1 = Lam i0 (Lam n $ add n i1)
-    let case2 = Lam m (Lam i0 $ app a [sub m i1, i1])
-    let case3 = Lam m (Lam n $ app a [sub m i1, app a [m, sub n i1]])
-    let env = [("a", Or case1 $ Or case2 case3)]
-    reduce (app a [i0]) env `shouldBe` (Or (Lam n $ add n i1) (App (Or case2 case3) i0), env)
-    reduce (app a [i1]) env `shouldBe` (Or (Lam i0 $ app a [sub m i1, i1]) (App case3 i1), env)
-    reduce (app a [i2]) env `shouldBe` (Or (Lam i0 $ app a [sub m i1, i1]) (App case3 i2), env)
-    reduce (app a [i0, i0]) env `shouldBe` (Int 1, env)
-    reduce (app a [i0, i1]) env `shouldBe` (Int 2, env)
-    reduce (app a [i0, i2]) env `shouldBe` (Int 3, env)
-    -- reduce (app a [i1, i0]) env `shouldBe` (Int 2, env)
-    -- reduce (app a [i1, i1]) env `shouldBe` (Int 2, env)
-    True `shouldBe` True
+--   prepend 0 '*' "abc" `shouldBe` "abc"
+--   prepend 1 '*' "abc" `shouldBe` "*abc"
+--   prepend 2 '*' "abc" `shouldBe` "**abc"
 
--- TODO: map (parallelization)
--- TODO: foldr (lazy evaluation)
--- TODO: foldl (tail call optimization)
+-- it "☯ resize" $ do
+--   resize 0 '*' "abc" `shouldBe` ""
+--   resize 1 '*' "abc" `shouldBe` "a"
+--   resize 2 '*' "abc" `shouldBe` "ab"
+--   resize 3 '*' "abc" `shouldBe` "abc"
+--   resize 4 '*' "abc" `shouldBe` "abc*"
+--   resize 5 '*' "abc" `shouldBe` "abc**"
+
+-- it "☯ findTempVar" $ do
+--   findTempVar "" (Var "") `shouldBe` Nothing
+--   findTempVar "" (Var "42") `shouldBe` Just 42
+--   findTempVar "x" (Var "y42") `shouldBe` Nothing
+--   findTempVar "x" (Var "x42") `shouldBe` Just 42
+--   findTempVar "" (App (Var "1") []) `shouldBe` Just 1
+--   findTempVar "" (App (Var "2") [Var "1"]) `shouldBe` Just 2
+--   findTempVar "" (App (Var "1") [Var "2"]) `shouldBe` Just 2
+--   findTempVar "" (App (Var "1") [Var "2", Var "3"]) `shouldBe` Just 3
+--   findTempVar "" (Lam [] (Var "1")) `shouldBe` Just 1
+--   findTempVar "" (Lam ["2"] (Var "1")) `shouldBe` Just 2
+--   findTempVar "" (Lam ["1"] (Var "2")) `shouldBe` Just 2
+--   findTempVar "" (Lam ["1", "2"] (Var "3")) `shouldBe` Just 3
+
+-- it "☯ findCtrs" $ do
+--   findCtrs [] `shouldBe` []
+--   findCtrs [([PAny], Int 1)] `shouldBe` []
+--   findCtrs [([PVar "x"], Int 1)] `shouldBe` []
+--   findCtrs [([PCtr "A" []], Int 1)] `shouldBe` [("A", 0)]
+--   findCtrs [([PCtr "A" []], Int 1), ([PCtr "B" [PAny, PAny]], Int 2)] `shouldBe` [("A", 0), ("B", 2)]
+
+-- -- TODO: test casePop
+-- -- TODO: test caseToCore
+-- it "☯ matchAny" $ do
+--   matchAny (Int 0) [] `shouldBe` []
+--   matchAny (Int 0) [([PAny, PVar "y"], Var "x")] `shouldBe` [([PVar "y"], Var "x")]
+--   matchAny (Int 0) [([PVar "x", PVar "y"], Var "x")] `shouldBe` [([PVar "y"], Int 0)]
+--   matchAny (Int 0) [([PCtr "A" [], PVar "y"], Var "x")] `shouldBe` []
+--   matchAny (Int 0) [([PInt 1, PVar "y"], Var "x")] `shouldBe` []
+
+-- it "☯ matchToCase" $ do
+--   matchToCase [] [] (Int 0) `shouldBe` Int 0
+--   matchToCase [] [([PAny], Var "x")] (Int 0) `shouldBe` Var "x"
+--   matchToCase [Int 1, Int 2] [([PAny, PVar "y"], Var "x"), ([PAny, PVar "y"], Var "y")] (Int 0) `shouldBe` Case (Int 1) [] (Match [Int 2] [([PVar "y"], Var "x"), ([PVar "y"], Var "y")] (Int 0))
+--   matchToCase [Int 1, Int 2] [([PVar "x", PVar "y"], Var "x"), ([PVar "x", PVar "y"], Var "y")] (Int 0) `shouldBe` Case (Int 1) [] (Match [Int 2] [([PVar "y"], Int 1), ([PVar "y"], Var "y")] (Int 0))
+--   -- matchToCase [Int 1, Int 2] [([PCtr "Nil" [], PVar "y"], Var "x"), ([PCtr "Cons" [PVar "x1", PVar "x2"], PVar "y"], Var "y")] (Int 0)
+--   --   `shouldBe` Case (Int 1) [("Nil", Match [Int 2] [([PVar "y"], Var "x")] (Int 0)), ("Cons", Lam ["x", "xs"] (Match [Var "x", Var "xs", Int 2] [([PVar "x1", PVar "x2", PVar "y"], Var "y")] (Int 0)))] (Match [Int 2] [] (Int 0))
+--   matchToCase [Int 1, Int 2] [([PInt 3, PVar "y"], Var "x"), ([PInt 4, PVar "y"], Var "y")] (Int 0)
+--     `shouldBe` If (eq (Int 1) (Int 3)) (Match [Int 2] [([PVar "y"], Var "x")] (Int 0)) (Match [Int 1, Int 2] [([PInt 4, PVar "y"], Var "y")] (Int 0))
+
+-- it "☯ toCore" $ do
+--   toCore ctx (Var "x") `shouldBe` C.Var "x"
+--   toCore ctx (Int 1) `shouldBe` C.Int 1
+--   toCore ctx (Ctr "Undefined") `shouldBe` C.Var "Undefined"
+--   toCore ctx (Ctr "Nil") `shouldBe` C.lam ["Nil", "Cons"] (C.Var "Nil")
+--   toCore ctx (Ctr "Cons") `shouldBe` C.lam ["x", "xs", "Nil", "Cons"] (C.app (C.Var "Cons") [C.Var "x", C.Var "xs"])
+--   toCore ctx (App (Var "x") []) `shouldBe` C.Var "x"
+--   toCore ctx (App (Var "x") [Var "y"]) `shouldBe` C.App (C.Var "x") (C.Var "y")
+--   toCore ctx (App (Var "x") [Var "y", Var "z"]) `shouldBe` C.app (C.Var "x") [C.Var "y", C.Var "z"]
+--   toCore ctx (Lam [] (Int 0)) `shouldBe` C.Int 0
+--   toCore ctx (Lam ["x"] (Int 0)) `shouldBe` C.Lam "x" (C.Int 0)
+--   toCore ctx (Lam ["x", "y", "z"] (Int 0)) `shouldBe` C.lam ["x", "y", "z"] (C.Int 0)
+--   toCore ctx (If (Var "x") (Var "y") (Var "z")) `shouldBe` C.app (C.Var "x") [C.Var "y", C.Var "z"]
+--   toCore ctx (Case (Var "x") [] (Int 0)) `shouldBe` C.Int 0
+--   toCore ctx (Case (Var "x") [("Undefined", Int 1)] (Int 0)) `shouldBe` C.Int 0
+--   -- toCore ctx (Case (Var "x") [("A", Int 1)] (Int 0)) `shouldBe` C.app (C.Var "x") [C.Int 1, C.Int 0, C.Int 0]
+--   -- toCore ctx (Case (Var "x") [("A", Int 1), ("B", Int 2)] (Int 0)) `shouldBe` C.app (C.Var "x") [C.Int 1, C.Int 2, C.Int 0]
+--   -- toCore ctx (Case (Var "x") [("A", Int 1), ("B", Int 2), ("C", Int 3)] (Int 0)) `shouldBe` C.app (C.Var "x") [C.Int 1, C.Int 2, C.Int 3]
+--   -- toCore ctx (Case (Var "x") [("B", Int 2), ("A", Int 1), ("C", Int 3)] (Int 0)) `shouldBe` C.app (C.Var "x") [C.Int 1, C.Int 2, C.Int 3]
+--   -- toCore ctx (Case (Var "x") [("B", Int 2), ("C", Int 3), ("A", Int 1)] (Int 0)) `shouldBe` C.app (C.Var "x") [C.Int 1, C.Int 2, C.Int 3]
+--   -- toCore ctx (Case (Var "x") [("Just", Lam ["y"] (Int 2)), ("Nothing", Int 1)] (Int 0)) `shouldBe` C.app (C.Var "x") [C.Int 1, C.Lam "y" (C.Int 2)]
+--   toCore ctx (Match [] [] (Int 0)) `shouldBe` C.Int 0
+--   toCore ctx (Match [] [([PAny], Var "x")] (Int 0)) `shouldBe` C.Var "x"
+--   toCore ctx (Match [Var "a", Var "b"] [([PAny, PVar "y"], Var "x")] (Int 0)) `shouldBe` C.Var "x"
+--   toCore ctx (Match [Var "a", Var "b"] [([PVar "x", PVar "y"], Var "x")] (Int 0)) `shouldBe` C.Var "a"
+--   -- toCore ctx (Match [Var "a", Var "b"] [([PCtr "Nothing" [], PVar "y"], Var "x")] (Int 0)) `shouldBe` C.Var "a"
+--   -- toCore ctx (Match [Var "a", Var "b"] [([PCtr "Just" [PVar "x"], PVar "y"], Var "x")] (Int 0)) `shouldBe` C.Var "a"
+--   -- matchToCase [Int 1, Int 2] [([PAny, PVar "y"], Var "x"), ([PAny, PVar "y"], Var "y")] (Int 0) `shouldBe` Case (Int 1) [] (Match [Int 2] [([PVar "y"], Var "x"), ([PVar "y"], Var "y")] (Int 0))
+--   -- matchToCase [Int 1, Int 2] [([PVar "x", PVar "y"], Var "x"), ([PVar "x", PVar "y"], Var "y")] (Int 0) `shouldBe` Case (Int 1) [] (Match [Int 2] [([PVar "y"], Int 1), ([PVar "y"], Var "y")] (Int 0))
+--   -- matchToCase [Int 1, Int 2] [([PCtr "A" [], PVar "y"], Var "x"), ([PCtr "B" [PVar "x1", PVar "x2"], PVar "y"], Var "y")] (Int 0)
+--   --   `shouldBe` Case (Int 1) [("A", Match [Int 2] [([PVar "y"], Var "x")] (Int 0)), ("B", Match [Int 2] [([PVar "x1", PVar "x2", PVar "y"], Var "y")] (Int 0))] (Match [Int 2] [] (Int 0))
+--   -- matchToCase [Int 1, Int 2] [([PInt 3, PVar "y"], Var "x"), ([PInt 4, PVar "y"], Var "y")] (Int 0)
+--   --   `shouldBe` If (eq (Int 1) (Int 3)) (Match [Int 2] [([PVar "y"], Var "x")] (Int 0)) (Match [Int 1, Int 2] [([PInt 4, PVar "y"], Var "y")] (Int 0))
+
+--   -- toCore ctx (Match [] [([PVar "x"], Int 1), ([], Int 2)] (Int 0)) `shouldBe` C.Int 1
+--   -- toCore ctx (Match [Var "a"] [] (Int 0)) `shouldBe` C.Int 0
+--   -- toCore ctx (Match [Var "a"] [([PVar "x"], Var "x")] (Int 0)) `shouldBe` C.Var "a"
+--   -- toCore ctx (Match [Var "a"] [([PVar "x"], Var "x"), ([PVar "y"], Var "y")] (Int 0)) `shouldBe` C.Var "a"
+--   -- toCore ctx (Match [Var "a"] [([PCtr "A" []], Var "x")] (Int 0)) `shouldBe` C.Var "a"
+--   -- toCore ctx (Match [Var "a"] [([PCtr "Just" [PVar "x"]], Var "x")] (Int 0)) `shouldBe` C.Var "a"
+--   -- toCore ctx (Match [Var "a"] [([PCtr "Just" [PVar "x"]], Var "x"), ([PVar "y"], Var "y")] (Int 0)) `shouldBe` C.Var "a"
+--   toCore ctx (Op2 C.Add) `shouldBe` C.Op2 C.Add
+--   toCore ctx (Op2 C.Sub) `shouldBe` C.Op2 C.Sub
