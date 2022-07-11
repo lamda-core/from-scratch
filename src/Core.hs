@@ -2,6 +2,8 @@ module Core where
 
 import Data.List (delete, find, union)
 import Data.Maybe (fromMaybe)
+import Parser (Parser)
+import qualified Parser as P
 import Text.Read (readMaybe)
 
 -- Bidirectional type checking: https://youtu.be/utyBNDj7s2w
@@ -34,6 +36,10 @@ data Pattern
   deriving (Eq, Show)
 
 type Context = Constructor -> Maybe [(Constructor, [Variable])]
+
+newtype Error
+  = SyntaxError P.Error
+  deriving (Eq, Show)
 
 (|>) :: a -> (a -> b) -> b
 (|>) x f = f x
@@ -145,6 +151,9 @@ match (arg : args) ((PInt i : ps, body) : paths) default' ctx =
 match (arg : args) paths default' ctx =
   case' arg (filterMap (pathToCase ctx) paths) (match args (matchAny arg paths) default' ctx) ctx
 
+-- TODO: let' -- allow to define mutually recursive functions and pattern destructuring
+-- let' :: [(Pattern, Expr)] -> Expr -> Context -> Expr
+
 substitute :: Variable -> Expr -> Expr -> Expr
 substitute x a (Var x') | x == x' = a
 substitute x a (App b c) = App (substitute x a b) (substitute x a c)
@@ -157,5 +166,52 @@ filterMap f (x : xs) = case f x of
   Just y -> y : filterMap f xs
   Nothing -> filterMap f xs
 
--- fix :: Expr -> Expr
--- fix = App Fix
+-- == Parser == --
+parse :: String -> Either Error Expr
+parse text = case P.parse text parseExpr of
+  Left err -> Left (SyntaxError err)
+  Right ast -> Right ast
+
+parseExpr :: Parser Expr
+parseExpr =
+  P.expression
+    [ P.term Var parseVariable,
+      P.term Int P.integer,
+      P.term (uncurry lam) parseLambda,
+      P.term Op2 parseBinaryOperator
+    ]
+    [ P.infixL 1 (const add) (P.char '+'),
+      P.infixL 1 (const sub) (P.char '-'),
+      P.infixL 2 (const mul) (P.char '*'),
+      P.infixL 3 (const App) P.spaces
+    ]
+
+parseVariable :: Parser String
+parseVariable = do
+  c <- P.oneOf [P.letter, P.char '_']
+  cs <- P.zeroOrMore (P.oneOf [P.alphanumeric, P.char '_'])
+  P.succeed (c : cs)
+
+parseLambda :: Parser ([String], Expr)
+parseLambda = do
+  _ <- P.char '\\'
+  xs <- P.zeroOrMore (do _ <- P.spaces; parseVariable)
+  _ <- P.spaces
+  _ <- P.text "->"
+  _ <- P.spaces
+  a <- parseExpr
+  P.succeed (xs, a)
+
+parseBinaryOperator :: Parser BinaryOperator
+parseBinaryOperator = do
+  _ <- P.char '('
+  _ <- P.spaces
+  op <-
+    P.oneOf
+      [ fmap (const Add) (P.char '+'),
+        fmap (const Sub) (P.char '-'),
+        fmap (const Mul) (P.char '*')
+      ]
+  _ <- P.spaces
+  _ <- P.char ')'
+  P.succeed op

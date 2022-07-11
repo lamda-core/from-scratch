@@ -115,3 +115,31 @@ coreTests = describe "--== Core language ==--" $ do
     match [Var "a"] [([PCtr "Nil" []], Var "x")] (Int 0) ctx `shouldBe` app (Var "a") [Var "x", Int 0]
     match [Var "a"] [([PCtr "Cons" [PVar "x", PVar "xs"]], Var "x")] (Int 0) ctx `shouldBe` app (Var "a") [Int 0, lam ["x", "xs"] (Var "x")]
     match [Var "a"] [([PCtr "Cons" [PVar "xs", PVar "x"]], Var "xs")] (Int 0) ctx `shouldBe` app (Var "a") [Int 0, lam ["xs", "x"] (Var "xs")]
+
+  describe "☯ parse" $ do
+    it "☯ basic" $ do
+      parse "x" `shouldBe` Right (Var "x")
+      parse "42" `shouldBe` Right (Int 42)
+      parse "\\ -> 42" `shouldBe` Right (Int 42)
+      parse "\\x -> 42" `shouldBe` Right (Lam "x" (Int 42))
+      parse "\\x y z -> 42" `shouldBe` Right (lam ["x", "y", "z"] (Int 42))
+      parse "x y" `shouldBe` Right (App (Var "x") (Var "y"))
+      parse "(+)" `shouldBe` Right (Op2 Add)
+      parse "(-)" `shouldBe` Right (Op2 Sub)
+      parse "(*)" `shouldBe` Right (Op2 Mul)
+      parse "( + )" `shouldBe` Right (Op2 Add)
+
+    it "☯ operator precedence" $ do
+      let (x, y, z) = (Var "x", Var "y", Var "z")
+      parse "x + y + z" `shouldBe` Right (add (add x y) z)
+      parse "x + y - z" `shouldBe` Right (sub (add x y) z)
+      parse "x + y * z" `shouldBe` Right (add x (mul y z))
+      parse "x - y + z" `shouldBe` Right (add (sub x y) z)
+      parse "x - y - z" `shouldBe` Right (sub (sub x y) z)
+      parse "x - y * z" `shouldBe` Right (sub x (mul y z))
+      parse "x * y + z" `shouldBe` Right (add (mul x y) z)
+      parse "x * y - z" `shouldBe` Right (sub (mul x y) z)
+      parse "x * y * z" `shouldBe` Right (mul (mul x y) z)
+      parse "x * y z" `shouldBe` Right (mul x (App y z))
+      parse "x y * z" `shouldBe` Right (mul (App x y) z)
+      parse "x y z" `shouldBe` Right (App (App x y) z)

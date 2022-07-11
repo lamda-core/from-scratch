@@ -1,7 +1,7 @@
 module ParserTests where
 
 import Parser
-import Test.Hspec
+import Test.Hspec (SpecWith, describe, it, shouldBe)
 
 parserTests :: SpecWith ()
 parserTests = describe "--== Parser ==--" $ do
