@@ -151,6 +151,9 @@ match (arg : args) ((PInt i : ps, body) : paths) default' ctx =
 match (arg : args) paths default' ctx =
   case' arg (filterMap (pathToCase ctx) paths) (match args (matchAny arg paths) default' ctx) ctx
 
+-- TODO: let' -- allow to define mutually recursive functions and pattern destructuring
+-- let' :: [(Pattern, Expr)] -> Expr -> Context -> Expr
+
 substitute :: Variable -> Expr -> Expr -> Expr
 substitute x a (Var x') | x == x' = a
 substitute x a (App b c) = App (substitute x a b) (substitute x a c)
