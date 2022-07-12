@@ -192,7 +192,14 @@ between min max parser = do
   succeed (x : xs)
 
 -- TODO: split :: Parser delim -> Parser a -> Parser [a]
--- TODO: until
+until' :: (a -> Bool) -> Parser a -> Parser [a]
+until' done parser =
+  do
+    x <- parser
+    _ <- assert (not (done x)) ""
+    xs <- until' done parser
+    succeed (x : xs)
+    |> orElse (succeed [])
 
 foldL :: (b -> a -> b) -> b -> Parser a -> Parser b
 foldL f initial parser =

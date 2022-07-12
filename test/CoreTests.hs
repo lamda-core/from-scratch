@@ -123,11 +123,11 @@ coreTests = describe "--== Core language ==--" $ do
       parse "\\ -> 42" `shouldBe` Right (Int 42)
       parse "\\x -> 42" `shouldBe` Right (Lam "x" (Int 42))
       parse "\\x y z -> 42" `shouldBe` Right (lam ["x", "y", "z"] (Int 42))
-      parse "x y" `shouldBe` Right (App (Var "x") (Var "y"))
       parse "(+)" `shouldBe` Right (Op2 Add)
       parse "(-)" `shouldBe` Right (Op2 Sub)
       parse "(*)" `shouldBe` Right (Op2 Mul)
       parse "( + )" `shouldBe` Right (Op2 Add)
+      parse "-- Comment\nx" `shouldBe` Right (Var "x")
 
     it "☯ operator precedence" $ do
       let (x, y, z) = (Var "x", Var "y", Var "z")
