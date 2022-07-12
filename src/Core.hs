@@ -178,7 +178,8 @@ parseExpr =
     [ P.term Var parseVariable,
       P.term Int P.integer,
       P.term (uncurry lam) parseLambda,
-      P.term Op2 parseBinaryOperator
+      P.term Op2 parseBinaryOperator,
+      P.prefix (const id) parseComment
     ]
     [ P.infixL 1 (const add) (P.char '+'),
       P.infixL 1 (const sub) (P.char '-'),
@@ -215,3 +216,9 @@ parseBinaryOperator = do
   _ <- P.spaces
   _ <- P.char ')'
   P.succeed op
+
+parseComment :: Parser String
+parseComment = do
+  _ <- P.text "--"
+  comment <- P.until' (== '\n') P.anyChar
+  P.succeed comment
