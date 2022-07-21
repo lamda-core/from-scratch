@@ -107,12 +107,14 @@ toCore (Match paths default') ctx = do
       inferName [] = ""
       inferName ((PVar x : _, _) : _) = x
       inferName (_ : paths) = inferName paths
+  let x = inferName paths
 
   let getCtr :: Context -> Path -> Maybe (Constructor, [Variable])
       getCtr ctx (PCtr ctr _ : _, _) = do
         args <- constructorArguments ctr ctx
         Just (ctr, args)
       getCtr _ _ = Nothing
+  let ctrs = unique (filterMap (getCtr ctx) paths)
 
   let rename :: [Variable] -> [Pattern] -> AST -> AST
       rename (x : xs) (PVar y : ps) a | x /= y = rename xs ps (App (Lam y a) (Var x))
@@ -123,20 +125,16 @@ toCore (Match paths default') ctx = do
       matchAny _ (PAny : ps, a) = Just (ps, a)
       matchAny x (PVar y : ps, a) = Just (ps, rename [x] [PVar y] a)
       matchAny _ _ = Nothing
+  let others = filterMap (matchAny x) paths
 
   let matchCtr :: Variable -> Constructor -> [Variable] -> Path -> Maybe Path
       matchCtr _ _ args (PAny : ps, a) = Just (map PVar args ++ ps, a)
       matchCtr x _ args (PVar y : ps, a) = Just (map PVar args ++ ps, rename [x] [PVar y] a)
       matchCtr _ ctr args (PCtr ctr' qs : ps, a) | ctr == ctr' = Just (map PVar args ++ ps, rename args qs a)
       matchCtr _ _ _ _ = Nothing
-
   let caseOf :: Variable -> [Path] -> AST -> (Constructor, [Variable]) -> (Constructor, AST)
       caseOf x paths default' (ctr, args) =
         (ctr, Match (filterMap (matchCtr x ctr args) paths) default')
-
-  let x = inferName paths
-  let ctrs = unique (filterMap (getCtr ctx) paths)
-  let others = filterMap (matchAny x) paths
   let case' = Lam x (Case (Var x) (map (caseOf x paths default') ctrs) (Match others default'))
   toCore case' ctx
 toCore Add _ = C.Op2 C.Add
@@ -160,10 +158,10 @@ filterMap f (x : xs) = case f x of
   Nothing -> filterMap f xs
 
 -- == Parser == --
--- parse :: String -> Either Error Expr
--- parse text = case P.parse text parseExpr of
---   Left err -> Left (SyntaxError err)
---   Right ast -> Right ast
+parse :: String -> Either Error AST
+parse text = case P.parse text parseExpr of
+  Left err -> Left (SyntaxError err)
+  Right ast -> Right ast
 
 -- parseModule :: Parser Module
 -- parseModule =
