@@ -7,7 +7,7 @@ parserTests :: SpecWith ()
 parserTests = describe "--== Parser ==--" $ do
   let parse' :: String -> Parser a -> Either String a
       parse' source parser = case parse source parser of
-        Left (Error message _) -> Left message
+        Left (ParserError message _) -> Left message
         Right x -> Right x
 
   describe "☯ Control flow" $ do
