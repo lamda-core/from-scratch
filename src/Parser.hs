@@ -2,7 +2,7 @@ module Parser where
 
 import qualified Data.Char as Char
 
-newtype Parser a = Parser (State -> Either Error (a, State))
+newtype Parser a = Parser (State -> Either ParserError (a, State))
 
 data State = State
   { source :: String,
@@ -20,7 +20,7 @@ data Token = Token
   }
   deriving (Eq, Show)
 
-data Error = Error String State
+data ParserError = ParserError String State
   deriving (Eq, Show)
 
 (|>) :: a -> (a -> b) -> b
@@ -53,7 +53,7 @@ instance Monad Parser where
       )
   return x = succeed x
 
-parse :: String -> Parser a -> Either Error a
+parse :: String -> Parser a -> Either ParserError a
 parse source (Parser p) = do
   let initialState =
         State
@@ -69,7 +69,7 @@ succeed :: a -> Parser a
 succeed value = Parser (\state -> Right (value, state))
 
 expected :: String -> Parser a
-expected message = Parser (Left . Error message)
+expected message = Parser (Left . ParserError message)
 
 assert :: Bool -> String -> Parser ()
 assert check message = if check then succeed () else expected message
@@ -103,7 +103,7 @@ anyChar =
                     else tok {col = col tok + 1}
               }
           )
-      advance state = Left (Error "a character" state)
+      advance state = Left (ParserError "a character" state)
    in Parser advance
 
 charIf :: (Char -> Bool) -> String -> Parser Char

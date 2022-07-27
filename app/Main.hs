@@ -1,11 +1,11 @@
 module Main where
 
 -- import Core (parse)
-import qualified System.Environment
+-- import qualified System.Environment
 
 main :: IO ()
 main = do
-  args <- System.Environment.getArgs
+  -- args <- System.Environment.getArgs
   -- case args of
   --   (filename : _) -> do
   --     contents <- readFile filename
