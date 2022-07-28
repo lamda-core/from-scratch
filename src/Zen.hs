@@ -1,88 +1,123 @@
 module Zen where
 
 import Core
-import Parser hiding (parse)
-import qualified Parser
+import Parser
+
+-- TODO: AST type for pretty printing
 
 newtype Error
   = SyntaxError ParserError
   deriving (Eq, Show)
 
-parse :: String -> Either Error Term
-parse text = case Parser.parse text parseTerm of
-  Left err -> Left (SyntaxError err)
-  Right term -> Right term
+-- parse :: String -> Either Error Term
+-- parse text = case Parser.parse text parseTerm of
+--   Left err -> Left (SyntaxError err)
+--   Right term -> Right term
 
--- parseModule :: Parser Module
--- parseModule =
---   oneOf
---     [ do
---         (name, value) <- parseLetBinding
---         module' <- parseModule
---         define
---     ]
-
-parseLetBinding :: Parser (String, Term)
-parseLetBinding = do
-  _ <- char '@'
-  _ <- spaces
-  name <- parseVariable
-  _ <- spaces
-  _ <- char '='
-  _ <- spaces
-  expr <- parseTerm
-  succeed (name, expr)
-
-parseDefinitions :: Parser [(String, Term)]
-parseDefinitions = zeroOrMore (oneOf [parseLetBinding])
-
-parseTerm :: Parser Term
-parseTerm =
-  expression
-    [ term Var parseVariable,
-      term Int integer,
-      -- term (uncurry lam) parseLambda,
-      term id parseBinaryOperator,
-      prefix (const id) parseComment
-    ]
-    [ infixL 1 (const add) (char '+'),
-      infixL 1 (const sub) (char '-'),
-      infixL 2 (const mul) (char '*'),
-      infixL 3 (const App) spaces
-    ]
-
-parseVariable :: Parser String
-parseVariable = do
-  c <- oneOf [letter, char '_']
+variable :: Parser String
+variable = do
+  -- TODO: support `-` and other characters, maybe URL-like names
+  c <- lowercase
   cs <- zeroOrMore (oneOf [alphanumeric, char '_'])
   succeed (c : cs)
 
-parseLambda :: Parser ([String], Term)
-parseLambda = do
-  _ <- char '\\'
-  xs <- zeroOrMore (do _ <- spaces; parseVariable)
-  _ <- spaces
-  _ <- text "->"
-  _ <- spaces
-  a <- parseTerm
-  succeed (xs, a)
+constructor :: Parser String
+constructor = do
+  -- TODO: support `-` and other characters, maybe URL-like names, or keep types CamelCase?
+  c <- uppercase
+  cs <- zeroOrMore (oneOf [alphanumeric, char '_'])
+  succeed (c : cs)
 
-parseBinaryOperator :: Parser Term
-parseBinaryOperator = do
-  _ <- char '('
-  _ <- spaces
-  op <-
-    oneOf
-      [ fmap (const Add) (char '+'),
-        fmap (const Sub) (char '-'),
-        fmap (const Mul) (char '*')
-      ]
-  _ <- spaces
-  _ <- char ')'
-  succeed (Op2 op)
+binaryOperator :: Parser BinaryOperator
+binaryOperator =
+  oneOf
+    [ fmap (const Add) (char '+'),
+      fmap (const Sub) (char '-'),
+      fmap (const Mul) (char '*'),
+      fmap (const Eq) (text "==")
+    ]
 
-parseComment :: Parser String
-parseComment = do
+comment :: Parser String
+comment = do
   _ <- text "--"
-  comment <- until' (== '\n') anyChar
-  succeed comment
+  _ <- zeroOrOne space
+  until' (== '\n') anyChar
+
+binding :: Parser Binding
+binding = do
+  oneOf
+    [ do
+        x <- token variable
+        _ <- token (char '@')
+        p <- token pattern
+        succeed (p, x),
+      do
+        p <- token pattern
+        succeed (p, ""),
+      do
+        x <- token variable
+        succeed (PAny, x)
+    ]
+
+pattern :: Parser Pattern
+pattern = do
+  oneOf
+    [ fmap (const PAny) (char '_'),
+      fmap PInt integer,
+      do
+        ctr <- token constructor
+        ps <- zeroOrMore (token binding)
+        succeed (PCtr ctr ps),
+      do
+        _ <- token (char '(')
+        p <- token pattern
+        _ <- token (char ')')
+        succeed p
+    ]
+
+case' :: Parser Case
+case' = do
+  _ <- token (char '|')
+  bindings <- oneOrMore (token binding)
+  _ <- token (text "->")
+  expr <- token expression
+  succeed (bindings, expr)
+
+expression :: Parser Term
+expression = do
+  let lambda :: Parser ([Variable], Term)
+      lambda = do
+        _ <- token (char '\\')
+        xs <- oneOrMore (token variable)
+        _ <- token (char '.')
+        a <- expression
+        succeed (xs, a)
+
+  let binop :: Parser BinaryOperator
+      binop = do
+        let operators =
+              [ fmap (const Add) (char '+'),
+                fmap (const Sub) (char '-'),
+                fmap (const Mul) (char '*'),
+                fmap (const Eq) (text "==")
+              ]
+        _ <- token (char '(')
+        op <- token (oneOf operators)
+        _ <- token (char ')')
+        succeed op
+
+  withOperators
+    [ term (const Err) (char '_'),
+      term Var variable,
+      term Int integer,
+      term (uncurry lam) lambda,
+      term Op2 binop,
+      prefix (const id) comment,
+      inbetween (const id) (char '(') (char ')')
+    ]
+    [ infixL 1 (const eq) (text "=="),
+      infixL 2 (const add) (char '+'),
+      infixL 2 (const sub) (char '-'),
+      infixL 3 (const mul) (char '*'),
+      infixL 4 (const App) spaces
+    ]

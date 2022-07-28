@@ -29,8 +29,12 @@ data BinaryOperator
 data Pattern
   = PAny
   | PInt Int
-  | PCtr Constructor [(Pattern, Variable)]
+  | PCtr Constructor [Binding]
   deriving (Eq, Show)
+
+type Binding = (Pattern, Variable)
+
+type Case = ([Binding], Term)
 
 type Context = [(Constructor, [(Constructor, Int)])]
 
@@ -89,36 +93,44 @@ eq a b = app (Op2 Eq) [a, b]
 if' :: Term -> Term -> Term -> Term
 if' cond then' else' = app cond [then', else']
 
-match :: [([(Pattern, Variable)], Term)] -> Context -> Term
+match :: [Case] -> Context -> Term
 match [] _ = Err
 match (([], a) : _) _ = a
-match paths ctx = do
-  let findAlts :: [([(Pattern, Variable)], Term)] -> Maybe [(Constructor, Int)]
+match cases ctx = do
+  let findAlts :: [Case] -> Maybe [(Constructor, Int)]
       -- TODO: Maybe refactor and merge with `match []` case
       findAlts [] = Nothing
       findAlts (((PCtr ctr _, _) : _, _) : _) = lookup ctr ctx
-      findAlts (_ : paths) = findAlts paths
+      findAlts (_ : cases) = findAlts cases
 
-  let matchAny :: Variable -> ([(Pattern, Variable)], Term) -> Maybe ([(Pattern, Variable)], Term)
+  let matchAny :: Variable -> Case -> Maybe Case
       matchAny x ((PAny, y) : ps, a) = Just (ps, let' (y, Var x) a)
       matchAny _ _ = Nothing
 
-  let matchCtr :: Variable -> (Constructor, Int) -> ([(Pattern, Variable)], Term) -> Maybe ([(Pattern, Variable)], Term)
+  let matchCtr :: Variable -> (Constructor, Int) -> Case -> Maybe Case
       matchCtr x (_, n) ((PAny, y) : ps, a) = Just (replicate n (PAny, "") ++ ps, let' (y, Var x) a)
       matchCtr x (ctr, _) ((PCtr ctr' qs, y) : ps, a) | ctr == ctr' = Just (qs ++ ps, let' (y, Var x) a)
       matchCtr _ _ _ = Nothing
 
-  let freeVars = map snd paths |> map freeVariables |> foldl union []
+  let freeVars = map snd cases |> map freeVariables |> foldl union []
   let x = newName freeVars "%"
-  let other = match (filterMap (matchAny x) paths) ctx
-  case findAlts paths of
+  let other = match (filterMap (matchAny x) cases) ctx
+  case findAlts cases of
     Just alts -> do
-      let cases =
+      let branches =
             map (matchCtr x) alts
-              |> map (`filterMap` paths)
+              |> map (`filterMap` cases)
               |> map (`match` ctx)
-      Lam x (app (Var x) cases)
+      Lam x (app (Var x) branches)
     Nothing -> Lam x other
+
+inline :: [(Variable, Term)] -> Term -> Term
+inline defs (Var x) = case lookup x defs of
+  Just a -> inline defs a
+  Nothing -> Var x
+inline defs (App a b) = App (inline defs a) (inline defs b)
+inline defs (Lam x a) = Lam x (inline (filter (\(y, _) -> x /= y) defs) a)
+inline _ a = a
 
 freeVariables :: Term -> [String]
 freeVariables (Var x) = [x]

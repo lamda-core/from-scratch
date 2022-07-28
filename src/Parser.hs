@@ -121,11 +121,11 @@ spaces = zeroOrMore space
 letter :: Parser Char
 letter = charIf Char.isLetter "a letter"
 
-lower :: Parser Char
-lower = charIf Char.isLower "a lowercase letter"
+lowercase :: Parser Char
+lowercase = charIf Char.isLower "a lowercase letter"
 
-upper :: Parser Char
-upper = charIf Char.isUpper "an uppercase letter"
+uppercase :: Parser Char
+uppercase = charIf Char.isUpper "an uppercase letter"
 
 digit :: Parser Char
 digit = charIf Char.isDigit "a digit from 0 to 9"
@@ -247,11 +247,11 @@ textCaseSensitive str =
   chain (fmap charCaseSensitive str)
     |> orElse (expected $ "the text '" <> str <> "' (case sensitive)")
 
-identifier :: Parser Char -> [Parser Char] -> Parser String
-identifier first rest = do
-  x <- first
-  xs <- zeroOrMore (oneOf rest)
-  succeed (x : xs)
+token :: Parser a -> Parser a
+token parser = do
+  x <- parser
+  _ <- spaces
+  succeed x
 
 -- TODO: line
 -- TODO: date
@@ -274,65 +274,53 @@ identifier first rest = do
 -- TODO: collection : ([a] -> b) -> Parser open -> Parser a -> Parser delim -> Parser close -> Parser b
 
 -- Operator precedence
-type UnaryOperator a = (Int -> Parser a) -> Parser a
+type Prefix a = (Int -> Parser a) -> Parser a
 
-type BinaryOperator a = Int -> a -> UnaryOperator a
+type Infix a = Int -> a -> Prefix a
 
-term :: (a -> b) -> Parser a -> UnaryOperator b
+term :: (a -> b) -> Parser a -> Prefix b
 term f parser _ = do
-  x <- parser
-  _ <- spaces
+  x <- token parser
   succeed (f x)
 
-prefix :: (op -> a -> a) -> Parser op -> UnaryOperator a
+prefix :: (op -> a -> a) -> Parser op -> Prefix a
 prefix f op expr = do
-  op' <- op
-  _ <- spaces
-  y <- expr 0
-  _ <- spaces
+  op' <- token op
+  y <- token (expr 0)
   succeed (f op' y)
 
 prefixList :: (a -> b -> b) -> b -> Parser open -> Parser a -> Parser close -> Parser b
 prefixList f initial open parser close = do
-  _ <- open
-  y <- foldR f initial (do _ <- spaces; parser)
-  _ <- spaces
-  _ <- close
-  _ <- spaces
+  _ <- token open
+  y <- foldR f initial (token parser)
+  _ <- token close
   succeed y
 
-inbetween :: (open -> a -> a) -> Parser open -> Parser close -> UnaryOperator a
+inbetween :: (open -> a -> a) -> Parser open -> Parser close -> Prefix a
 inbetween f open close expr = do
-  open' <- open
-  _ <- spaces
-  y <- expr 0
-  _ <- spaces
-  _ <- close
-  _ <- spaces
+  open' <- token open
+  y <- token (expr 0)
+  _ <- token close
   succeed (f open' y)
 
-infixL :: Int -> (op -> a -> a -> a) -> Parser op -> BinaryOperator a
+infixL :: Int -> (op -> a -> a -> a) -> Parser op -> Infix a
 infixL opPrec f op prec x expr = do
   _ <- assert (prec < opPrec) ""
-  op' <- op
-  _ <- spaces
-  y <- expr opPrec
-  _ <- spaces
+  op' <- token op
+  y <- token (expr opPrec)
   succeed (f op' x y)
 
-infixR :: Int -> (op -> a -> a -> a) -> Parser op -> BinaryOperator a
+infixR :: Int -> (op -> a -> a -> a) -> Parser op -> Infix a
 infixR opPrec f op prec x expr = do
   _ <- assert (prec <= opPrec) ""
-  op' <- op
-  _ <- spaces
-  y <- expr opPrec
-  _ <- spaces
+  op' <- token op
+  y <- token (expr opPrec)
   succeed (f op' x y)
 
-expression :: [UnaryOperator a] -> [BinaryOperator a] -> Parser a
-expression unaryOperators binaryOperators =
-  let unary f = oneOf (fmap (\op -> op f) unaryOperators)
-      binary x f prec = oneOf (fmap (\op -> op x f prec) binaryOperators)
+withOperators :: [Prefix a] -> [Infix a] -> Parser a
+withOperators prefix infix' =
+  let unary f = oneOf (fmap (\op -> op f) prefix)
+      binary x f prec = oneOf (fmap (\op -> op x f prec) infix')
       expr prec = do
         x <- unary expr
         expr2 prec x

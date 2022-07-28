@@ -48,13 +48,13 @@ parserTests = describe "--== Parser ==--" $ do
       parse' "A" letter `shouldBe` Right 'A'
       parse' " " letter `shouldBe` Left "a letter"
 
-    it "☯ lower" $ do
-      parse' "a" lower `shouldBe` Right 'a'
-      parse' "A" lower `shouldBe` Left "a lowercase letter"
+    it "☯ lowercase" $ do
+      parse' "a" lowercase `shouldBe` Right 'a'
+      parse' "A" lowercase `shouldBe` Left "a lowercase letter"
 
-    it "☯ upper" $ do
-      parse' "A" upper `shouldBe` Right 'A'
-      parse' "a" upper `shouldBe` Left "an uppercase letter"
+    it "☯ uppercase" $ do
+      parse' "A" uppercase `shouldBe` Right 'A'
+      parse' "a" uppercase `shouldBe` Left "an uppercase letter"
 
     it "☯ digit" $ do
       parse' "0" digit `shouldBe` Right '0'
@@ -150,13 +150,9 @@ parserTests = describe "--== Parser ==--" $ do
       parse' "hello" (textCaseSensitive "hello") `shouldBe` Right "hello"
       parse' "Hello" (textCaseSensitive "hello") `shouldBe` Left "the text 'hello' (case sensitive)"
 
-    it "☯ identifier" $ do
-      parse' "1" (identifier letter [alphanumeric]) `shouldBe` Left "a letter"
-      parse' "a1" (identifier letter [alphanumeric]) `shouldBe` Right "a1"
-
-    it "☯ expression" $ do
+    it "☯ withOperators" $ do
       let calculator =
-            expression
+            withOperators
               [ prefix (\_ x -> - x) (char '-'),
                 term id number
               ]
