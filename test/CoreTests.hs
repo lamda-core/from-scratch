@@ -34,6 +34,15 @@ coreTests = describe "--== Core language ==--" $ do
     match [([(PCtr "A" [], "x")], Var "x")] ctx `shouldBe` Lam "%0" (app (Var "%0") [let' ("x", Var "%0") (Var "x"), Err])
     match [([(PCtr "B" [(PAny, "a")], "x")], Var "x")] ctx `shouldBe` Lam "%0" (app (Var "%0") [Err, Lam "%1" (let' ("a", Var "%1") (let' ("x", Var "%0") (Var "x")))])
 
+  it "☯ inline" $ do
+    inline [] Err `shouldBe` Err
+    inline [("x", Var "y")] (Var "x") `shouldBe` Var "y"
+    inline [("x", Var "y"), ("y", Var "z")] (Var "x") `shouldBe` Var "z"
+    inline [("y", Var "z"), ("x", Var "y")] (Var "x") `shouldBe` Var "z"
+    inline [("x", Var "y")] (App (Var "x") (Var "x")) `shouldBe` App (Var "y") (Var "y")
+    inline [("x", Var "y"), ("y", Var "z")] (Lam "x" (Var "x")) `shouldBe` Lam "x" (Var "x")
+    inline [("y", Var "z"), ("x", Var "y")] (Lam "x" (Var "y")) `shouldBe` Lam "x" (Var "z")
+
   it "☯ nameIndex" $ do
     nameIndex "" "" `shouldBe` Nothing
     nameIndex "" "x" `shouldBe` Nothing
