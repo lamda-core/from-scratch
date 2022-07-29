@@ -278,8 +278,8 @@ type Prefix a = (Int -> Parser a) -> Parser a
 
 type Infix a = Int -> a -> Prefix a
 
-term :: (a -> b) -> Parser a -> Prefix b
-term f parser _ = do
+atom :: (a -> b) -> Parser a -> Prefix b
+atom f parser _ = do
   x <- token parser
   succeed (f x)
 
