@@ -154,7 +154,7 @@ parserTests = describe "--== Parser ==--" $ do
       let calculator =
             withOperators
               [ prefix (\_ x -> - x) (char '-'),
-                term id number
+                atom id number
               ]
               [ infixL 1 (const (+)) (char '+'),
                 infixL 1 (const (-)) (char '-'),

@@ -14,19 +14,22 @@ newtype Error
 --   Left err -> Left (SyntaxError err)
 --   Right term -> Right term
 
-variable :: Parser String
-variable = do
+variableName :: Parser String
+variableName = do
   -- TODO: support `-` and other characters, maybe URL-like names
   c <- lowercase
   cs <- zeroOrMore (oneOf [alphanumeric, char '_'])
   succeed (c : cs)
 
-constructor :: Parser String
-constructor = do
+constructorName :: Parser String
+constructorName = do
   -- TODO: support `-` and other characters, maybe URL-like names, or keep types CamelCase?
   c <- uppercase
   cs <- zeroOrMore (oneOf [alphanumeric, char '_'])
   succeed (c : cs)
+
+typeName :: Parser String
+typeName = constructorName
 
 binaryOperator :: Parser BinaryOperator
 binaryOperator =
@@ -47,7 +50,7 @@ binding :: Parser Binding
 binding = do
   oneOf
     [ do
-        x <- token variable
+        x <- token variableName
         _ <- token (char '@')
         p <- token pattern
         succeed (p, x),
@@ -55,7 +58,7 @@ binding = do
         p <- token pattern
         succeed (p, ""),
       do
-        x <- token variable
+        x <- token variableName
         succeed (PAny, x)
     ]
 
@@ -65,7 +68,7 @@ pattern = do
     [ fmap (const PAny) (char '_'),
       fmap PInt integer,
       do
-        ctr <- token constructor
+        ctr <- token constructorName
         ps <- zeroOrMore (token binding)
         succeed (PCtr ctr ps),
       do
@@ -80,18 +83,18 @@ case' = do
   _ <- token (char '|')
   bindings <- oneOrMore (token binding)
   _ <- token (text "->")
-  expr <- token expression
-  succeed (bindings, expr)
+  expr <- token term
+  succeed (bindings, const expr)
 
-expression :: Parser Term
-expression = do
-  let lambda :: Parser ([Variable], Term)
+term :: Parser Term
+term = do
+  let lambda :: Parser Term
       lambda = do
         _ <- token (char '\\')
-        xs <- oneOrMore (token variable)
+        xs <- oneOrMore (token variableName)
         _ <- token (char '.')
-        a <- expression
-        succeed (xs, a)
+        a <- term
+        succeed (foldr Lam a xs)
 
   let binop :: Parser BinaryOperator
       binop = do
@@ -107,17 +110,48 @@ expression = do
         succeed op
 
   withOperators
-    [ term (const Err) (char '_'),
-      term Var variable,
-      term Int integer,
-      term (uncurry lam) lambda,
-      term Op2 binop,
+    [ atom (const Err) (char '_'),
+      atom Var variableName,
+      atom Int integer,
+      atom id lambda,
+      atom Op2 binop,
       prefix (const id) comment,
       inbetween (const id) (char '(') (char ')')
     ]
-    [ infixL 1 (const eq) (text "=="),
-      infixL 2 (const add) (char '+'),
-      infixL 2 (const sub) (char '-'),
-      infixL 3 (const mul) (char '*'),
+    [ infixL 1 (\_ a b -> App (App (Op2 Eq) a) b) (text "=="),
+      infixL 2 (\_ a b -> App (App (Op2 Add) a) b) (char '+'),
+      infixL 2 (\_ a b -> App (App (Op2 Sub) a) b) (char '-'),
+      infixL 3 (\_ a b -> App (App (Op2 Mul) a) b) (char '*'),
       infixL 4 (const App) spaces
     ]
+
+typeAlternative :: Parser (Constructor, Int)
+typeAlternative = do
+  name <- constructorName
+  arity <- integer
+  succeed (name, arity)
+
+typeDefinition :: Parser (Context -> Context)
+typeDefinition = do
+  name <- token typeName
+  let args = [] -- TODO
+  alts <- oneOrMore typeAlternative
+  succeed (defineType name args alts)
+
+context :: Parser (Context -> Context)
+context = do
+  defs <- zeroOrMore typeDefinition
+  succeed (\ctx -> foldr id ctx defs)
+
+definition :: Parser (String, Expr)
+definition = do
+  name <- token variableName
+  _ <- token (char '=')
+  term' <- token term
+  succeed (name, const term')
+
+expression :: Parser Expr
+expression = do
+  defs <- zeroOrMore definition
+  term' <- token term
+  succeed (let' defs (const term'))

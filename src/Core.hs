@@ -1,6 +1,6 @@
 module Core where
 
-import Data.List (delete, union)
+import Data.List (union)
 import Text.Read (readMaybe)
 
 -- Bidirectional type checking: https://youtu.be/utyBNDj7s2w
@@ -26,6 +26,8 @@ data BinaryOperator
   | Eq
   deriving (Eq)
 
+type Type = Term
+
 data Pattern
   = PAny
   | PInt Int
@@ -34,9 +36,12 @@ data Pattern
 
 type Binding = (Pattern, Variable)
 
-type Case = ([Binding], Term)
+type Case = ([Binding], Expr)
 
+-- TODO: make Context opaque
 type Context = [(Constructor, [(Constructor, Int)])]
+
+type Expr = Context -> Term
 
 instance Show Term where
   show Err = "_"
@@ -66,37 +71,57 @@ instance Show BinaryOperator where
 
 infixl 1 |>
 
-defineConstructors :: [(Constructor, Int)] -> Context -> Context
-defineConstructors alts ctx = map (\(ctr, _) -> (ctr, alts)) alts ++ ctx
+-- Context
+empty :: Context
+empty = []
 
-app :: Term -> [Term] -> Term
-app = foldl App
+defineType :: String -> [Variable] -> [(Constructor, Int)] -> Context -> Context
+defineType _ _ alts ctx = map (\(ctr, _) -> (ctr, alts)) alts ++ ctx
 
-lam :: [Variable] -> Term -> Term
-lam xs a = foldr Lam a xs
+-- High level constructs
+err :: Expr
+err = const Err
 
-let' :: (String, Term) -> Term -> Term
-let' (x, a) b = App (Lam x b) a
+var :: Variable -> Expr
+var x = const (Var x)
 
-add :: Term -> Term -> Term
-add a b = app (Op2 Add) [a, b]
+int :: Int -> Expr
+int i = const (Int i)
 
-sub :: Term -> Term -> Term
-sub a b = app (Op2 Sub) [a, b]
+app :: Expr -> [Expr] -> Expr
+app a bs ctx = foldl App (a ctx) (map (\b -> b ctx) bs)
 
-mul :: Term -> Term -> Term
-mul a b = app (Op2 Mul) [a, b]
+lam :: [Variable] -> Expr -> Expr
+lam xs a ctx = foldr Lam (a ctx) xs
 
-eq :: Term -> Term -> Term
-eq a b = app (Op2 Eq) [a, b]
+add :: Expr -> Expr -> Expr
+add a b = app (const (Op2 Add)) [a, b]
 
-if' :: Term -> Term -> Term -> Term
+sub :: Expr -> Expr -> Expr
+sub a b = app (const (Op2 Sub)) [a, b]
+
+mul :: Expr -> Expr -> Expr
+mul a b = app (const (Op2 Mul)) [a, b]
+
+eq :: Expr -> Expr -> Expr
+eq a b = app (const (Op2 Eq)) [a, b]
+
+if' :: Expr -> Expr -> Expr -> Expr
 if' cond then' else' = app cond [then', else']
 
-match :: [Case] -> Context -> Term
-match [] _ = Err
-match (([], a) : _) _ = a
-match cases ctx = do
+let' :: [(Variable, Expr)] -> Expr -> Expr
+let' defs a ctx = case a ctx of
+  Var x -> case lookup x defs of
+    Just b -> let' defs b ctx
+    Nothing -> Var x
+  App a b -> App (let' defs (const a) ctx) (let' defs (const b) ctx)
+  Lam x a -> Lam x (let' (filter (\(y, _) -> x /= y) defs) (const a) ctx)
+  a -> a
+
+match :: [Case] -> Expr
+match [] = err
+match (([], a) : _) = a
+match cases = \ctx -> do
   let findAlts :: [Case] -> Maybe [(Constructor, Int)]
       -- TODO: Maybe refactor and merge with `match []` case
       findAlts [] = Nothing
@@ -104,15 +129,15 @@ match cases ctx = do
       findAlts (_ : cases) = findAlts cases
 
   let matchAny :: Variable -> Case -> Maybe Case
-      matchAny x ((PAny, y) : ps, a) = Just (ps, let' (y, Var x) a)
+      matchAny x ((PAny, y) : ps, a) = Just (ps, let' [(y, var x)] a)
       matchAny _ _ = Nothing
 
   let matchCtr :: Variable -> (Constructor, Int) -> Case -> Maybe Case
-      matchCtr x (_, n) ((PAny, y) : ps, a) = Just (replicate n (PAny, "") ++ ps, let' (y, Var x) a)
-      matchCtr x (ctr, _) ((PCtr ctr' qs, y) : ps, a) | ctr == ctr' = Just (qs ++ ps, let' (y, Var x) a)
+      matchCtr x (_, n) ((PAny, y) : ps, a) = Just (replicate n (PAny, "") ++ ps, let' [(y, var x)] a)
+      matchCtr x (ctr, _) ((PCtr ctr' qs, y) : ps, a) | ctr == ctr' = Just (qs ++ ps, let' [(y, var x)] a)
       matchCtr _ _ _ = Nothing
 
-  let freeVars = map snd cases |> map freeVariables |> foldl union []
+  let freeVars = map snd cases |> map (\a -> freeVariables (a ctx)) |> foldl union []
   let x = newName freeVars "%"
   let other = match (filterMap (matchAny x) cases) ctx
   case findAlts cases of
@@ -120,18 +145,11 @@ match cases ctx = do
       let branches =
             map (matchCtr x) alts
               |> map (`filterMap` cases)
-              |> map (`match` ctx)
-      Lam x (app (Var x) branches)
+              |> map match
+      lam [x] (app (var x) branches) ctx
     Nothing -> Lam x other
 
-inline :: [(Variable, Term)] -> Term -> Term
-inline defs (Var x) = case lookup x defs of
-  Just a -> inline defs a
-  Nothing -> Var x
-inline defs (App a b) = App (inline defs a) (inline defs b)
-inline defs (Lam x a) = Lam x (inline (filter (\(y, _) -> x /= y) defs) a)
-inline _ a = a
-
+-- Helper functions
 freeVariables :: Term -> [String]
 freeVariables (Var x) = [x]
 freeVariables (App a b) = freeVariables a `union` freeVariables b
@@ -156,14 +174,17 @@ lastNameIndex prefix (x : xs) = case lastNameIndex prefix xs of
     Nothing -> Just i
   Nothing -> if prefix == x then Just 0 else nameIndex prefix x
 
--- substitute :: Variable -> Term -> Term -> Term
--- substitute x a (Var x') | x == x' = a
--- substitute x a (App b c) = App (substitute x a b) (substitute x a c)
--- substitute x a (Lam y b) | x /= y = Lam y (substitute x a b)
--- substitute _ _ b = b
-
+-- Standard library functions
 filterMap :: (a -> Maybe b) -> [a] -> [b]
 filterMap _ [] = []
 filterMap f (x : xs) = case f x of
   Just y -> y : filterMap f xs
   Nothing -> filterMap f xs
+
+delete :: Eq a => a -> [a] -> [a]
+delete _ [] = []
+delete x (x' : xs) | x == x' = delete x xs
+delete x (y : xs) = y : delete x xs
+
+-- TODO: union : [a] -> [a] -> [a]
+-- TODO: readInt : String -> Maybe Int

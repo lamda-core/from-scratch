@@ -6,42 +6,41 @@ import Test.Hspec
 coreTests :: SpecWith ()
 coreTests = describe "--== Core language ==--" $ do
   it "☯ app" $ do
-    app (Var "x") [] `shouldBe` Var "x"
-    app (Var "x") [Var "y"] `shouldBe` App (Var "x") (Var "y")
-    app (Var "x") [Var "y", Var "z"] `shouldBe` App (App (Var "x") (Var "y")) (Var "z")
+    app (var "x") [] empty `shouldBe` Var "x"
+    app (var "x") [var "y"] empty `shouldBe` App (Var "x") (Var "y")
+    app (var "x") [var "y", var "z"] empty `shouldBe` App (App (Var "x") (Var "y")) (Var "z")
 
   it "☯ lam" $ do
-    lam [] (Int 1) `shouldBe` Int 1
-    lam ["x"] (Int 1) `shouldBe` Lam "x" (Int 1)
-    lam ["x", "y"] (Int 1) `shouldBe` Lam "x" (Lam "y" (Int 1))
+    lam [] (var "x") empty `shouldBe` Var "x"
+    lam ["x"] (var "y") empty `shouldBe` Lam "x" (Var "y")
+    lam ["x", "y"] (var "z") empty `shouldBe` Lam "x" (Lam "y" (Var "z"))
 
   it "☯ built-in operators" $ do
-    add (Var "x") (Var "y") `shouldBe` app (Op2 Add) [Var "x", Var "y"]
-    sub (Var "x") (Var "y") `shouldBe` app (Op2 Sub) [Var "x", Var "y"]
-    mul (Var "x") (Var "y") `shouldBe` app (Op2 Mul) [Var "x", Var "y"]
-    eq (Var "x") (Var "y") `shouldBe` app (Op2 Eq) [Var "x", Var "y"]
+    add (var "x") (var "y") empty `shouldBe` App (App (Op2 Add) (Var "x")) (Var "y")
+    sub (var "x") (var "y") empty `shouldBe` App (App (Op2 Sub) (Var "x")) (Var "y")
+    mul (var "x") (var "y") empty `shouldBe` App (App (Op2 Mul) (Var "x")) (Var "y")
+    eq (var "x") (var "y") empty `shouldBe` App (App (Op2 Eq) (Var "x")) (Var "y")
 
   it "☯ if" $ do
-    if' (Var "x") (Var "y") (Var "z") `shouldBe` app (Var "x") [Var "y", Var "z"]
+    if' (var "x") (var "y") (var "z") empty `shouldBe` App (App (Var "x") (Var "y")) (Var "z")
+
+  it "☯ let'" $ do
+    let' [] err empty `shouldBe` Err
+    let' [("x", var "y")] (var "x") empty `shouldBe` Var "y"
+    let' [("x", var "y"), ("y", var "z")] (var "x") empty `shouldBe` Var "z"
+    let' [("y", var "z"), ("x", var "y")] (var "x") empty `shouldBe` Var "z"
+    let' [("x", var "y")] (app (var "x") [var "x"]) empty `shouldBe` App (Var "y") (Var "y")
+    let' [("x", var "y"), ("y", var "z")] (lam ["x"] (var "x")) empty `shouldBe` Lam "x" (Var "x")
+    let' [("y", var "z"), ("x", var "y")] (lam ["x"] (var "y")) empty `shouldBe` Lam "x" (Var "z")
 
   it "☯ match" $ do
-    let ctx = defineConstructors [("A", 0), ("B", 1)] []
+    let ctx = defineType "T" [] [("A", 0), ("B", 1)] empty
     match [] ctx `shouldBe` Err
-    match [([], Int 1), ([], Int 2)] ctx `shouldBe` Int 1
-    match [([(PAny, "x")], Var "x")] ctx `shouldBe` Lam "%0" (let' ("x", Var "%0") (Var "x"))
-    match [([(PAny, "x")], Var "x")] ctx `shouldBe` Lam "%0" (let' ("x", Var "%0") (Var "x"))
-    match [([(PCtr "Unknown" [], "x")], Var "x")] ctx `shouldBe` Lam "%0" Err
-    match [([(PCtr "A" [], "x")], Var "x")] ctx `shouldBe` Lam "%0" (app (Var "%0") [let' ("x", Var "%0") (Var "x"), Err])
-    match [([(PCtr "B" [(PAny, "a")], "x")], Var "x")] ctx `shouldBe` Lam "%0" (app (Var "%0") [Err, Lam "%1" (let' ("a", Var "%1") (let' ("x", Var "%0") (Var "x")))])
-
-  it "☯ inline" $ do
-    inline [] Err `shouldBe` Err
-    inline [("x", Var "y")] (Var "x") `shouldBe` Var "y"
-    inline [("x", Var "y"), ("y", Var "z")] (Var "x") `shouldBe` Var "z"
-    inline [("y", Var "z"), ("x", Var "y")] (Var "x") `shouldBe` Var "z"
-    inline [("x", Var "y")] (App (Var "x") (Var "x")) `shouldBe` App (Var "y") (Var "y")
-    inline [("x", Var "y"), ("y", Var "z")] (Lam "x" (Var "x")) `shouldBe` Lam "x" (Var "x")
-    inline [("y", Var "z"), ("x", Var "y")] (Lam "x" (Var "y")) `shouldBe` Lam "x" (Var "z")
+    match [([], int 1), ([], int 2)] ctx `shouldBe` Int 1
+    match [([(PAny, "x")], var "x")] ctx `shouldBe` Lam "%0" (Var "%0")
+    match [([(PCtr "Unknown" [], "x")], var "x")] ctx `shouldBe` Lam "%0" Err
+    match [([(PCtr "A" [], "x")], var "x")] ctx `shouldBe` Lam "%0" (App (App (Var "%0") (Var "%0")) Err)
+    match [([(PCtr "B" [(PAny, "a")], "x")], var "x")] ctx `shouldBe` Lam "%0" (App (App (Var "%0") Err) (Lam "%1" (Var "%0")))
 
   it "☯ nameIndex" $ do
     nameIndex "" "" `shouldBe` Nothing
