@@ -83,18 +83,18 @@ case' = do
   _ <- token (char '|')
   bindings <- oneOrMore (token binding)
   _ <- token (text "->")
-  expr <- token term
-  succeed (bindings, const expr)
+  expr <- token expression
+  succeed (bindings, expr)
 
-term :: Parser Term
-term = do
-  let lambda :: Parser Term
+expression :: Parser Expr
+expression = do
+  let lambda :: Parser Expr
       lambda = do
         _ <- token (char '\\')
         xs <- oneOrMore (token variableName)
         _ <- token (char '.')
-        a <- term
-        succeed (foldr Lam a xs)
+        a <- expression
+        succeed (lam xs a)
 
   let binop :: Parser BinaryOperator
       binop = do
@@ -110,19 +110,19 @@ term = do
         succeed op
 
   withOperators
-    [ atom (const Err) (char '_'),
-      atom Var variableName,
-      atom Int integer,
+    [ atom (const err) (char '_'),
+      atom var variableName,
+      atom int integer,
       atom id lambda,
-      atom Op2 binop,
+      atom (const . Op2) binop,
       prefix (const id) comment,
       inbetween (const id) (char '(') (char ')')
     ]
-    [ infixL 1 (\_ a b -> App (App (Op2 Eq) a) b) (text "=="),
-      infixL 2 (\_ a b -> App (App (Op2 Add) a) b) (char '+'),
-      infixL 2 (\_ a b -> App (App (Op2 Sub) a) b) (char '-'),
-      infixL 3 (\_ a b -> App (App (Op2 Mul) a) b) (char '*'),
-      infixL 4 (const App) spaces
+    [ infixL 1 (const eq) (text "=="),
+      infixL 2 (const add) (char '+'),
+      infixL 2 (const sub) (char '-'),
+      infixL 3 (const mul) (char '*'),
+      infixL 4 (\_ a b -> app a [b]) spaces
     ]
 
 typeAlternative :: Parser (Constructor, Int)
@@ -147,11 +147,5 @@ definition :: Parser (String, Expr)
 definition = do
   name <- token variableName
   _ <- token (char '=')
-  term' <- token term
-  succeed (name, const term')
-
-expression :: Parser Expr
-expression = do
-  defs <- zeroOrMore definition
-  term' <- token term
-  succeed (let' defs (const term'))
+  expr <- token expression
+  succeed (name, expr)
