@@ -123,23 +123,9 @@ match [] = err
 match (([], a) : _) = a
 match (((PInt i, x) : ps, a) : cases) = lam [x] (if' (eq (var x) (int i)) (match [(ps, a)]) (match cases))
 match cases = \ctx -> do
-  let findAlts :: [Case] -> Maybe [(Constructor, Int)]
-      findAlts [] = Nothing
-      findAlts (((PCtr ctr _, _) : _, _) : _) = lookup ctr ctx
-      findAlts (_ : cases) = findAlts cases
-
-  let matchAny :: Variable -> Case -> Maybe Case
-      matchAny x ((PAny, y) : ps, a) = Just (ps, let' [(y, var x)] a)
-      matchAny _ _ = Nothing
-
-  let matchCtr :: Variable -> (Constructor, Int) -> Case -> Maybe Case
-      matchCtr x (_, n) ((PAny, y) : ps, a) = Just (replicate n (PAny, "") ++ ps, let' [(y, var x)] a)
-      matchCtr x (ctr, _) ((PCtr ctr' qs, y) : ps, a) | ctr == ctr' = Just (qs ++ ps, let' [(y, var x)] a)
-      matchCtr _ _ _ = Nothing
-
   let freeVars = map snd cases |> map (\a -> freeVariables (a ctx)) |> foldl union []
   let x = newName freeVars "%"
-  case findAlts cases of
+  case findAlts cases ctx of
     Just alts -> do
       let branches =
             map (matchCtr x) alts
@@ -172,6 +158,20 @@ lastNameIndex prefix (x : xs) = case lastNameIndex prefix xs of
     Just j -> Just (max i j)
     Nothing -> Just i
   Nothing -> if prefix == x then Just 0 else nameIndex prefix x
+
+findAlts :: [Case] -> Context -> Maybe [(Constructor, Int)]
+findAlts [] _ = Nothing
+findAlts (((PCtr ctr _, _) : _, _) : _) ctx = lookup ctr ctx
+findAlts (_ : cases) ctx = findAlts cases ctx
+
+matchAny :: Variable -> Case -> Maybe Case
+matchAny x ((PAny, y) : ps, a) = Just (ps, let' [(y, var x)] a)
+matchAny _ _ = Nothing
+
+matchCtr :: Variable -> (Constructor, Int) -> Case -> Maybe Case
+matchCtr x (_, n) ((PAny, y) : ps, a) = Just (replicate n (PAny, "") ++ ps, let' [(y, var x)] a)
+matchCtr x (ctr, _) ((PCtr ctr' qs, y) : ps, a) | ctr == ctr' = Just (qs ++ ps, let' [(y, var x)] a)
+matchCtr _ _ _ = Nothing
 
 -- Standard library functions
 filterMap :: (a -> Maybe b) -> [a] -> [b]
