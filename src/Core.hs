@@ -121,6 +121,7 @@ let' defs a ctx = case a ctx of
 match :: [Case] -> Expr
 match [] = err
 match (([], a) : _) = a
+match (((PInt i, x) : ps, a) : cases) = lam [x] (if' (eq (var x) (int i)) (match [(ps, a)]) (match cases))
 match cases = \ctx -> do
   let findAlts :: [Case] -> Maybe [(Constructor, Int)]
       findAlts [] = Nothing
