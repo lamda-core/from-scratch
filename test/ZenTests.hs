@@ -42,6 +42,11 @@ zenTests = describe "--== Zen language ==--" $ do
     parseCase "| x -> y" empty `shouldBe` Right ([(PAny, "x")], Var "y")
     parseCase "| x y -> z" empty `shouldBe` Right ([(PAny, "x"), (PAny, "y")], Var "z")
 
+  it "☯ definition" $ do
+    let parseDefinition src ctx = fmap (\(x, a) -> (x, a ctx)) (parse src definition)
+    parseDefinition "x = 1\n" empty `shouldBe` Right ("x", Int 1)
+    parseDefinition "x = 1;" empty `shouldBe` Right ("x", Int 1)
+
   it "☯ expression" $ do
     let parseExpr src ctx = fmap (\t -> t ctx) (parse src expression)
     parseExpr "_" empty `shouldBe` Right Err
@@ -53,8 +58,10 @@ zenTests = describe "--== Zen language ==--" $ do
     parseExpr "(-)" empty `shouldBe` Right (Op2 Sub)
     parseExpr "(*)" empty `shouldBe` Right (Op2 Mul)
     parseExpr "(==)" empty `shouldBe` Right (Op2 Eq)
-    parseExpr "(x)" empty `shouldBe` Right (Var "x")
+    parseExpr "x = 1; x" empty `shouldBe` Right (Int 1)
+    parseExpr "| x -> y | _ -> z" empty `shouldBe` Right (Lam "%0" (App (Var "y") (Lam "%0" (Var "z"))))
     parseExpr "-- comment\nx" empty `shouldBe` Right (Var "x") -- TODO: move comment into empty or definition
+    parseExpr "(x)" empty `shouldBe` Right (Var "x")
     parseExpr "x + y" empty `shouldBe` Right (App (App (Op2 Add) (Var "x")) (Var "y"))
     parseExpr "x - y" empty `shouldBe` Right (App (App (Op2 Sub) (Var "x")) (Var "y"))
     parseExpr "x * y" empty `shouldBe` Right (App (App (Op2 Mul) (Var "x")) (Var "y"))
@@ -78,7 +85,3 @@ zenTests = describe "--== Zen language ==--" $ do
     parseExpr "x * y z" empty `shouldBe` Right (mul x (app y [z]) empty)
     parseExpr "x y * z" empty `shouldBe` Right (mul (app x [y]) z empty)
     parseExpr "x y z" empty `shouldBe` Right (app (app x [y]) [z] empty)
-
-  it "☯ definition" $ do
-    let parseDefinition src ctx = fmap (\(x, a) -> (x, a ctx)) (parse src definition)
-    parseDefinition "x = 1" empty `shouldBe` Right ("x", Int 1)

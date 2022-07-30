@@ -123,7 +123,6 @@ match [] = err
 match (([], a) : _) = a
 match cases = \ctx -> do
   let findAlts :: [Case] -> Maybe [(Constructor, Int)]
-      -- TODO: Maybe refactor and merge with `match []` case
       findAlts [] = Nothing
       findAlts (((PCtr ctr _, _) : _, _) : _) = lookup ctr ctx
       findAlts (_ : cases) = findAlts cases
@@ -139,7 +138,6 @@ match cases = \ctx -> do
 
   let freeVars = map snd cases |> map (\a -> freeVariables (a ctx)) |> foldl union []
   let x = newName freeVars "%"
-  let other = match (filterMap (matchAny x) cases) ctx
   case findAlts cases of
     Just alts -> do
       let branches =
@@ -147,7 +145,7 @@ match cases = \ctx -> do
               |> map (`filterMap` cases)
               |> map match
       lam [x] (app (var x) branches) ctx
-    Nothing -> Lam x other
+    Nothing -> lam [x] (match (filterMap (matchAny x) cases)) ctx
 
 -- Helper functions
 freeVariables :: Term -> [String]
