@@ -280,32 +280,33 @@ type Infix a = Int -> a -> Prefix a
 
 atom :: (a -> b) -> Parser a -> Prefix b
 atom f parser _ = do
-  x <- token parser
+  x <- parser
   succeed (f x)
 
 prefix :: (op -> a -> a) -> Parser op -> Prefix a
 prefix f op expr = do
   op' <- token op
-  y <- token (expr 0)
+  y <- expr 0
   succeed (f op' y)
 
 prefixList :: (a -> b -> b) -> b -> Parser open -> Parser a -> Parser close -> Parser b
 prefixList f initial open parser close = do
   _ <- token open
   y <- foldR f initial (token parser)
-  _ <- token close
+  _ <- close
   succeed y
 
 inbetween :: (open -> a -> a) -> Parser open -> Parser close -> Prefix a
 inbetween f open close expr = do
   open' <- token open
   y <- token (expr 0)
-  _ <- token close
+  _ <- close
   succeed (f open' y)
 
 infixL :: Int -> (op -> a -> a -> a) -> Parser op -> Infix a
 infixL opPrec f op prec x expr = do
   _ <- assert (prec < opPrec) ""
+  _ <- spaces
   op' <- token op
   y <- token (expr opPrec)
   succeed (f op' x y)
@@ -313,8 +314,9 @@ infixL opPrec f op prec x expr = do
 infixR :: Int -> (op -> a -> a -> a) -> Parser op -> Infix a
 infixR opPrec f op prec x expr = do
   _ <- assert (prec <= opPrec) ""
+  _ <- spaces
   op' <- token op
-  y <- token (expr opPrec)
+  y <- expr opPrec
   succeed (f op' x y)
 
 withOperators :: [Prefix a] -> [Infix a] -> Parser a

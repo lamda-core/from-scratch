@@ -52,13 +52,13 @@ binding = do
     [ do
         x <- token variableName
         _ <- token (char '@')
-        p <- token pattern
+        p <- pattern
         succeed (p, x),
       do
-        p <- token pattern
+        p <- pattern
         succeed (p, ""),
       do
-        x <- token variableName
+        x <- variableName
         succeed (PAny, x)
     ]
 
@@ -68,13 +68,13 @@ pattern = do
     [ fmap (const PAny) (char '_'),
       fmap PInt integer,
       do
-        ctr <- token constructorName
-        ps <- zeroOrMore (token binding)
+        ctr <- constructorName
+        ps <- zeroOrMore (do _ <- spaces; binding)
         succeed (PCtr ctr ps),
       do
         _ <- token (char '(')
         p <- token pattern
-        _ <- token (char ')')
+        _ <- char ')'
         succeed p
     ]
 
@@ -83,7 +83,7 @@ case' = do
   _ <- token (char '|')
   bindings <- oneOrMore (token binding)
   _ <- token (text "->")
-  expr <- token expression
+  expr <- expression
   succeed (bindings, expr)
 
 expression :: Parser Expr
@@ -106,15 +106,17 @@ expression = do
               ]
         _ <- token (char '(')
         op <- token (oneOf operators)
-        _ <- token (char ')')
+        _ <- char ')'
         succeed op
 
   withOperators
-    [ atom (const err) (char '_'),
+    [ prefix let' (oneOrMore definition),
+      atom (const err) (char '_'),
       atom var variableName,
       atom int integer,
       atom id lambda,
       atom (const . Op2) binop,
+      atom match (oneOrMore case'),
       prefix (const id) comment,
       inbetween (const id) (char '(') (char ')')
     ]
@@ -127,7 +129,7 @@ expression = do
 
 typeAlternative :: Parser (Constructor, Int)
 typeAlternative = do
-  name <- constructorName
+  name <- token constructorName
   arity <- integer
   succeed (name, arity)
 
@@ -135,7 +137,7 @@ typeDefinition :: Parser (Context -> Context)
 typeDefinition = do
   name <- token typeName
   let args = [] -- TODO
-  alts <- oneOrMore typeAlternative
+  alts <- oneOrMore (do _ <- spaces; typeAlternative)
   succeed (defineType name args alts)
 
 context :: Parser (Context -> Context)
@@ -143,9 +145,12 @@ context = do
   defs <- zeroOrMore typeDefinition
   succeed (\ctx -> foldr id ctx defs)
 
-definition :: Parser (String, Expr)
+definition :: Parser (Variable, Expr)
 definition = do
   name <- token variableName
   _ <- token (char '=')
-  expr <- token expression
+  expr <- expression
+  -- TODO: support newlines and indentation aware parsing
+  _ <- zeroOrMore (oneOf [char ' ', char '\t'])
+  _ <- oneOf [char '\n', char ';']
   succeed (name, expr)
