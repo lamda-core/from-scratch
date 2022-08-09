@@ -44,14 +44,13 @@ type Context = [(Constructor, [(Constructor, Int)])]
 type Expr = Context -> Term
 
 instance Show Term where
-  show Err = "_"
+  show Err = "!"
   show (Var x) = x
   show (Int i) = show i
   show (App (Lam x b) a) = "@" ++ x ++ " = " ++ show a ++ "; " ++ show b
-  show (App a b) = case b of
-    App _ _ -> show a ++ " (" ++ show b ++ ")"
-    Lam _ _ -> show a ++ " (" ++ show b ++ ")"
-    _ -> show a ++ " " ++ show b
+  show (App a b@(App _ _)) = show a ++ " (" ++ show b ++ ")"
+  show (App a b@(Lam _ _)) = show a ++ " (" ++ show b ++ ")"
+  show (App a b) = show a ++ " " ++ show b
   show (Lam x a) = do
     let vars :: Term -> [Variable] -> ([Variable], Term)
         vars (Lam x a) xs = let (xs', a') = vars a xs in (x : xs', a')
@@ -124,9 +123,8 @@ let' defs a ctx = do
 match :: [Case] -> Expr
 match [] = err
 match (([], a) : _) = a
-match (((PInt i, x) : ps, a) : cases) = lam [x] (if' (eq (var x) (int i)) (match [(ps, a)]) (match cases))
 match cases = \ctx -> do
-  let freeVars = map snd cases |> map (\a -> freeVariables (a ctx)) |> foldl union []
+  let freeVars = map (\(_, a) -> freeVariables (a ctx)) cases |> foldl union []
   let x = newName freeVars "%"
   case findAlts cases ctx of
     Just alts -> do
@@ -135,7 +133,9 @@ match cases = \ctx -> do
               |> map (`filterMap` cases)
               |> map match
       lam [x] (app (var x) branches) ctx
-    Nothing -> lam [x] (match (filterMap (matchAny x) cases)) ctx
+    Nothing -> case cases of
+      ((PInt i, y) : ps, a) : cases -> lam [x] (if' (eq (var x) (int i)) (match [(ps, let' [(y, var x)] a)]) (match cases)) ctx
+      _ -> lam [x] (match (filterMap (matchAny x) cases)) ctx
 
 -- Helper functions
 freeVariables :: Term -> [String]
@@ -190,11 +190,3 @@ delete x (y : xs) = y : delete x xs
 
 -- TODO: union : [a] -> [a] -> [a]
 -- TODO: readInt : String -> Maybe Int
-
--- let lambda :: Parser Expr
---     lambda = do
---       _ <- token (char '\\')
---       xs <- oneOrMore (token variableName)
---       _ <- token (char '.')
---       a <- expression
---       succeed (lam xs a)

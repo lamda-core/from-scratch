@@ -37,7 +37,8 @@ coreTests = describe "--== Core language ==--" $ do
     match [] ctx `shouldBe` Err
     match [([], int 1), ([], int 2)] ctx `shouldBe` Int 1
     match [([(PAny, "x")], var "x")] ctx `shouldBe` Lam "%0" (App (Lam "x" (Var "x")) (Var "%0"))
-    match [([(PInt 1, "x")], var "x")] ctx `shouldBe` lam ["x"] (if' (eq (var "x") (int 1)) (var "x") err) empty
+    match [([(PInt 1, "x")], var "y")] ctx `shouldBe` lam ["%0"] (if' (eq (var "%0") (int 1)) (var "y") err) empty
+    match [([(PInt 1, "x")], var "x")] ctx `shouldBe` lam ["%0"] (if' (eq (var "%0") (int 1)) (let' [("x", var "%0")] (var "x")) err) empty
     match [([(PCtr "Unknown" [], "x")], var "x")] ctx `shouldBe` Lam "%0" Err
     match [([(PCtr "A" [], "x")], var "x")] ctx `shouldBe` Lam "%0" (App (App (Var "%0") (App (Lam "x" (Var "x")) (Var "%0"))) Err)
     match [([(PCtr "B" [(PAny, "a")], "x")], var "x")] ctx `shouldBe` Lam "%0" (App (App (Var "%0") Err) (Lam "%1" (App (Lam "x" (Var "x")) (Var "%0"))))

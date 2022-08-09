@@ -14,14 +14,14 @@ fromText src = case parse src term of
   Left err -> Left (SyntaxError err)
   Right term -> Right term
 
-variableName :: Parser String
+variableName :: Parser Variable
 variableName = do
   -- TODO: support `-` and other characters, maybe URL-like names
   c <- lowercase
   cs <- zeroOrMore (oneOf [alphanumeric, char '_'])
   succeed (c : cs)
 
-constructorName :: Parser String
+constructorName :: Parser Constructor
 constructorName = do
   -- TODO: support `-` and other characters, maybe URL-like names, or keep types CamelCase?
   c <- uppercase
