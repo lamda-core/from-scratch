@@ -88,14 +88,6 @@ case' = do
 
 expression :: Parser Expr
 expression = do
-  let lambda :: Parser Expr
-      lambda = do
-        _ <- token (char '\\')
-        xs <- oneOrMore (token variableName)
-        _ <- token (char '.')
-        a <- expression
-        succeed (lam xs a)
-
   let binop :: Parser BinaryOperator
       binop = do
         let operators =
@@ -110,13 +102,12 @@ expression = do
         succeed op
 
   withOperators
-    [ prefix let' (oneOrMore definition),
-      atom (const err) (char '_'),
+    [ atom (const err) (char '_'),
       atom var variableName,
       atom int integer,
-      atom id lambda,
       atom (const . Op2) binop,
       atom match (oneOrMore case'),
+      prefix let' (oneOrMore definition),
       prefix (const id) comment,
       inbetween (const id) (char '(') (char ')')
     ]
@@ -147,6 +138,7 @@ context = do
 
 definition :: Parser (Variable, Expr)
 definition = do
+  _ <- token (char '@')
   name <- token variableName
   _ <- token (char '=')
   expr <- token expression

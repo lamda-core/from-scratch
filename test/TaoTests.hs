@@ -44,7 +44,7 @@ taoTests = describe "--== ☯ Tao language ☯ ==--" $ do
 
   it "☯ definition" $ do
     let parseDefinition src ctx = fmap (\(x, a) -> (x, a ctx)) (parse src definition)
-    parseDefinition "x = 1;" empty `shouldBe` Right ("x", Int 1)
+    parseDefinition "@x = 1;" empty `shouldBe` Right ("x", Int 1)
   -- parseDefinition "x = 1\n" empty `shouldBe` Right ("x", Int 1)
 
   it "☯ expression" $ do
@@ -52,13 +52,11 @@ taoTests = describe "--== ☯ Tao language ☯ ==--" $ do
     parseExpr "_" empty `shouldBe` Right Err
     parseExpr "x" empty `shouldBe` Right (Var "x")
     parseExpr "42" empty `shouldBe` Right (Int 42)
-    parseExpr "\\x. y" empty `shouldBe` Right (Lam "x" (Var "y"))
-    parseExpr "\\x y. z" empty `shouldBe` Right (Lam "x" (Lam "y" (Var "z")))
     parseExpr "(+)" empty `shouldBe` Right (Op2 Add)
     parseExpr "(-)" empty `shouldBe` Right (Op2 Sub)
     parseExpr "(*)" empty `shouldBe` Right (Op2 Mul)
     parseExpr "(==)" empty `shouldBe` Right (Op2 Eq)
-    parseExpr "x = 1; x" empty `shouldBe` Right (Int 1)
+    parseExpr "@x = 1; x" empty `shouldBe` Right (App (Lam "x" (Var "x")) (Int 1))
     -- parseExpr "x = 1\nx" empty `shouldBe` Right (Int 1)
     parseExpr "| x -> y | _ -> z" empty `shouldBe` Right (Lam "%0" (App (Var "y") (Lam "%0" (Var "z"))))
     parseExpr "-- comment\nx" empty `shouldBe` Right (Var "x") -- TODO: move comment into empty or definition

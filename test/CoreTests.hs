@@ -26,22 +26,21 @@ coreTests = describe "--== Core language ==--" $ do
 
   it "☯ let'" $ do
     let' [] err empty `shouldBe` Err
-    let' [("x", var "y")] (var "x") empty `shouldBe` Var "y"
-    let' [("x", var "y"), ("y", var "z")] (var "x") empty `shouldBe` Var "z"
-    let' [("y", var "z"), ("x", var "y")] (var "x") empty `shouldBe` Var "z"
-    let' [("x", var "y")] (app (var "x") [var "x"]) empty `shouldBe` App (Var "y") (Var "y")
-    let' [("x", var "y"), ("y", var "z")] (lam ["x"] (var "x")) empty `shouldBe` Lam "x" (Var "x")
-    let' [("y", var "z"), ("x", var "y")] (lam ["x"] (var "y")) empty `shouldBe` Lam "x" (Var "z")
+    let' [("x", int 1)] (var "y") empty `shouldBe` Var "y"
+    let' [("x", int 1)] (var "x") empty `shouldBe` App (Lam "x" (Var "x")) (Int 1)
+    let' [("x", var "x")] (var "x") empty `shouldBe` App (Lam "x" (Var "x")) (Var "x")
+    let' [("x", var "y"), ("y", int 1)] (var "x") empty `shouldBe` App (Lam "x" (Var "x")) (App (Lam "y" (Var "y")) (Int 1))
+    let' [("x", int 1), ("y", var "x")] (var "y") empty `shouldBe` App (Lam "y" (Var "y")) (App (Lam "x" (Var "x")) (Int 1))
 
   it "☯ match" $ do
     let ctx = defineType "T" [] [("A", 0), ("B", 1)] empty
     match [] ctx `shouldBe` Err
     match [([], int 1), ([], int 2)] ctx `shouldBe` Int 1
-    match [([(PAny, "x")], var "x")] ctx `shouldBe` Lam "%0" (Var "%0")
+    match [([(PAny, "x")], var "x")] ctx `shouldBe` Lam "%0" (App (Lam "x" (Var "x")) (Var "%0"))
     match [([(PInt 1, "x")], var "x")] ctx `shouldBe` lam ["x"] (if' (eq (var "x") (int 1)) (var "x") err) empty
     match [([(PCtr "Unknown" [], "x")], var "x")] ctx `shouldBe` Lam "%0" Err
-    match [([(PCtr "A" [], "x")], var "x")] ctx `shouldBe` Lam "%0" (App (App (Var "%0") (Var "%0")) Err)
-    match [([(PCtr "B" [(PAny, "a")], "x")], var "x")] ctx `shouldBe` Lam "%0" (App (App (Var "%0") Err) (Lam "%1" (Var "%0")))
+    match [([(PCtr "A" [], "x")], var "x")] ctx `shouldBe` Lam "%0" (App (App (Var "%0") (App (Lam "x" (Var "x")) (Var "%0"))) Err)
+    match [([(PCtr "B" [(PAny, "a")], "x")], var "x")] ctx `shouldBe` Lam "%0" (App (App (Var "%0") Err) (Lam "%1" (App (Lam "x" (Var "x")) (Var "%0"))))
 
   it "☯ nameIndex" $ do
     nameIndex "" "" `shouldBe` Nothing

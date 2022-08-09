@@ -47,7 +47,7 @@ instance Show Term where
   show Err = "_"
   show (Var x) = x
   show (Int i) = show i
-  show (App (Lam x b) a) = x ++ " = " ++ show a ++ "; " ++ show b
+  show (App (Lam x b) a) = "@" ++ x ++ " = " ++ show a ++ "; " ++ show b
   show (App a b) = case b of
     App _ _ -> show a ++ " (" ++ show b ++ ")"
     Lam _ _ -> show a ++ " (" ++ show b ++ ")"
@@ -110,13 +110,16 @@ if' :: Expr -> Expr -> Expr -> Expr
 if' cond then' else' = app cond [then', else']
 
 let' :: [(Variable, Expr)] -> Expr -> Expr
-let' defs a ctx = case a ctx of
-  Var x -> case lookup x defs of
-    Just b -> let' defs b ctx
-    Nothing -> Var x
-  App a b -> App (let' defs (const a) ctx) (let' defs (const b) ctx)
-  Lam x a -> Lam x (let' (filter (\(y, _) -> x /= y) defs) (const a) ctx)
-  a -> a
+let' defs a ctx = do
+  let resolve :: [Variable] -> [(Variable, Term)]
+      resolve [] = []
+      resolve (x : xs) = case lookup x defs of
+        Just b -> (x, let' (filter (\(y, _) -> x /= y) defs) b ctx) : resolve xs
+        Nothing -> resolve xs
+
+  freeVariables (a ctx)
+    |> resolve
+    |> foldr (\(x, b) a -> App (Lam x a) b) (a ctx)
 
 match :: [Case] -> Expr
 match [] = err
@@ -187,3 +190,11 @@ delete x (y : xs) = y : delete x xs
 
 -- TODO: union : [a] -> [a] -> [a]
 -- TODO: readInt : String -> Maybe Int
+
+-- let lambda :: Parser Expr
+--     lambda = do
+--       _ <- token (char '\\')
+--       xs <- oneOrMore (token variableName)
+--       _ <- token (char '.')
+--       a <- expression
+--       succeed (lam xs a)
