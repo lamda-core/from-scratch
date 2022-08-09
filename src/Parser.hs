@@ -289,13 +289,6 @@ prefix f op expr = do
   y <- expr 0
   succeed (f op' y)
 
-prefixList :: (a -> b -> b) -> b -> Parser open -> Parser a -> Parser close -> Parser b
-prefixList f initial open parser close = do
-  _ <- token open
-  y <- foldR f initial (token parser)
-  _ <- close
-  succeed y
-
 inbetween :: (open -> a -> a) -> Parser open -> Parser close -> Prefix a
 inbetween f open close expr = do
   open' <- token open
@@ -308,7 +301,7 @@ infixL opPrec f op prec x expr = do
   _ <- assert (prec < opPrec) ""
   _ <- spaces
   op' <- token op
-  y <- token (expr opPrec)
+  y <- expr opPrec
   succeed (f op' x y)
 
 infixR :: Int -> (op -> a -> a -> a) -> Parser op -> Infix a

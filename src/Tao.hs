@@ -1,4 +1,4 @@
-module Zen where
+module Tao where
 
 import Core
 import Parser
@@ -9,10 +9,10 @@ newtype Error
   = SyntaxError ParserError
   deriving (Eq, Show)
 
--- parse :: String -> Either Error Term
--- parse text = case Parser.parse text parseTerm of
---   Left err -> Left (SyntaxError err)
---   Right term -> Right term
+fromText :: String -> Either Error Term
+fromText src = case parse src term of
+  Left err -> Left (SyntaxError err)
+  Right term -> Right term
 
 variableName :: Parser String
 variableName = do
@@ -140,17 +140,25 @@ typeDefinition = do
   alts <- oneOrMore (do _ <- spaces; typeAlternative)
   succeed (defineType name args alts)
 
-context :: Parser (Context -> Context)
+context :: Parser Context
 context = do
   defs <- zeroOrMore typeDefinition
-  succeed (\ctx -> foldr id ctx defs)
+  succeed (foldr id empty defs)
 
 definition :: Parser (Variable, Expr)
 definition = do
   name <- token variableName
   _ <- token (char '=')
-  expr <- expression
+  expr <- token expression
+  _ <- char ';'
   -- TODO: support newlines and indentation aware parsing
-  _ <- zeroOrMore (oneOf [char ' ', char '\t'])
-  _ <- oneOf [char '\n', char ';']
+  -- expr <- expression
+  -- _ <- zeroOrMore (oneOf [char ' ', char '\t'])
+  -- _ <- oneOf [char '\n', char ';']
   succeed (name, expr)
+
+term :: Parser Term
+term = do
+  ctx <- context
+  expr <- expression
+  succeed (expr ctx)

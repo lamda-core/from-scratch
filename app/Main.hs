@@ -1,16 +1,15 @@
 module Main where
 
--- import Core (parse)
--- import qualified System.Environment
+import qualified System.Environment
+import Tao
 
 main :: IO ()
 main = do
-  -- args <- System.Environment.getArgs
-  -- case args of
-  --   (filename : _) -> do
-  --     contents <- readFile filename
-  --     case parse contents of
-  --       Right expr -> print expr
-  --       Left err -> putStrLn ("❌ " ++ show err)
-  --   _ -> putStrLn "🛑 Please give me a file to run."
-  putStrLn "Hello"
+  args <- System.Environment.getArgs
+  case args of
+    (filename : _) -> do
+      src <- readFile filename
+      case fromText src of
+        Right expr -> print expr
+        Left err -> putStrLn ("❌ " ++ show err)
+    _ -> putStrLn "🛑 Please give me a file to run."
