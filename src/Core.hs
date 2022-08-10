@@ -1,6 +1,5 @@
 module Core where
 
-import Data.Char (isLetter)
 import Data.List (union)
 import Text.Read (readMaybe)
 
@@ -51,8 +50,7 @@ instance Show Term where
         vars a xs = (xs, a)
     let (xs, a') = vars a []
     "\\" ++ unwords (x : xs) ++ ". " ++ show a'
-  show (Call f@(ch : _)) | isLetter ch = f
-  show (Call op) = "(" ++ op ++ ")"
+  show (Call op) = "&" ++ op
 
 (|>) :: a -> (a -> b) -> b
 (|>) x f = f x
