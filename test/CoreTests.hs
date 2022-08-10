@@ -16,10 +16,10 @@ coreTests = describe "--== Core language ==--" $ do
     lam ["x", "y"] (var "z") empty `shouldBe` Lam "x" (Lam "y" (Var "z"))
 
   it "☯ built-in operators" $ do
-    add (var "x") (var "y") empty `shouldBe` App (App (Op2 Add) (Var "x")) (Var "y")
-    sub (var "x") (var "y") empty `shouldBe` App (App (Op2 Sub) (Var "x")) (Var "y")
-    mul (var "x") (var "y") empty `shouldBe` App (App (Op2 Mul) (Var "x")) (Var "y")
-    eq (var "x") (var "y") empty `shouldBe` App (App (Op2 Eq) (Var "x")) (Var "y")
+    add (var "x") (var "y") empty `shouldBe` App (App (Call "+") (Var "x")) (Var "y")
+    sub (var "x") (var "y") empty `shouldBe` App (App (Call "-") (Var "x")) (Var "y")
+    mul (var "x") (var "y") empty `shouldBe` App (App (Call "*") (Var "x")) (Var "y")
+    eq (var "x") (var "y") empty `shouldBe` App (App (Call "==") (Var "x")) (Var "y")
 
   it "☯ if" $ do
     if' (var "x") (var "y") (var "z") empty `shouldBe` App (App (Var "x") (Var "y")) (Var "z")
@@ -65,7 +65,7 @@ coreTests = describe "--== Core language ==--" $ do
     freeVariables (App (Var "x") (Var "y")) `shouldBe` ["x", "y"]
     freeVariables (Lam "x" (Var "x")) `shouldBe` []
     freeVariables (Lam "x" (Var "y")) `shouldBe` ["y"]
-    freeVariables (Op2 Add) `shouldBe` []
+    freeVariables (Call "+") `shouldBe` []
 
   it "☯ newName" $ do
     newName [] "x" `shouldBe` "x0"

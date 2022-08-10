@@ -52,19 +52,19 @@ taoTests = describe "--== ☯ Tao language ☯ ==--" $ do
     parseExpr "_" empty `shouldBe` Right Err
     parseExpr "x" empty `shouldBe` Right (Var "x")
     parseExpr "42" empty `shouldBe` Right (Int 42)
-    parseExpr "(+)" empty `shouldBe` Right (Op2 Add)
-    parseExpr "(-)" empty `shouldBe` Right (Op2 Sub)
-    parseExpr "(*)" empty `shouldBe` Right (Op2 Mul)
-    parseExpr "(==)" empty `shouldBe` Right (Op2 Eq)
+    parseExpr "(+)" empty `shouldBe` Right (Call "+")
+    parseExpr "(-)" empty `shouldBe` Right (Call "-")
+    parseExpr "(*)" empty `shouldBe` Right (Call "*")
+    parseExpr "(==)" empty `shouldBe` Right (Call "==")
     parseExpr "@x = 1; x" empty `shouldBe` Right (App (Lam "x" (Var "x")) (Int 1))
     -- parseExpr "x = 1\nx" empty `shouldBe` Right (Int 1)
     parseExpr "| x -> y | _ -> z" empty `shouldBe` Right (Lam "%0" (App (Var "y") (Lam "%0" (Var "z"))))
     parseExpr "-- comment\nx" empty `shouldBe` Right (Var "x") -- TODO: move comment into empty or definition
     parseExpr "(x)" empty `shouldBe` Right (Var "x")
-    parseExpr "x + y" empty `shouldBe` Right (App (App (Op2 Add) (Var "x")) (Var "y"))
-    parseExpr "x - y" empty `shouldBe` Right (App (App (Op2 Sub) (Var "x")) (Var "y"))
-    parseExpr "x * y" empty `shouldBe` Right (App (App (Op2 Mul) (Var "x")) (Var "y"))
-    parseExpr "x == y" empty `shouldBe` Right (App (App (Op2 Eq) (Var "x")) (Var "y"))
+    parseExpr "x + y" empty `shouldBe` Right (add (var "x") (var "y") empty)
+    parseExpr "x - y" empty `shouldBe` Right (sub (var "x") (var "y") empty)
+    parseExpr "x * y" empty `shouldBe` Right (mul (var "x") (var "y") empty)
+    parseExpr "x == y" empty `shouldBe` Right (eq (var "x") (var "y") empty)
 
   it "☯ operator precedence" $ do
     let parseExpr src ctx = fmap (\t -> t ctx) (parse src expression)

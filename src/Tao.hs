@@ -31,13 +31,13 @@ constructorName = do
 typeName :: Parser String
 typeName = constructorName
 
-binaryOperator :: Parser BinaryOperator
+binaryOperator :: Parser String
 binaryOperator =
   oneOf
-    [ fmap (const Add) (char '+'),
-      fmap (const Sub) (char '-'),
-      fmap (const Mul) (char '*'),
-      fmap (const Eq) (text "==")
+    [ text "==",
+      text "+",
+      text "-",
+      text "*"
     ]
 
 comment :: Parser String
@@ -88,16 +88,10 @@ case' = do
 
 expression :: Parser Expr
 expression = do
-  let binop :: Parser BinaryOperator
+  let binop :: Parser String
       binop = do
-        let operators =
-              [ fmap (const Add) (char '+'),
-                fmap (const Sub) (char '-'),
-                fmap (const Mul) (char '*'),
-                fmap (const Eq) (text "==")
-              ]
         _ <- token (char '(')
-        op <- token (oneOf operators)
+        op <- token binaryOperator
         _ <- char ')'
         succeed op
 
@@ -105,7 +99,7 @@ expression = do
     [ atom (const err) (char '_'),
       atom var variableName,
       atom int integer,
-      atom (const . Op2) binop,
+      atom (const . Call) binop,
       atom match (oneOrMore case'),
       prefix let' (oneOrMore definition),
       prefix (const id) comment,

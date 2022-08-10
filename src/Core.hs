@@ -1,5 +1,6 @@
 module Core where
 
+import Data.Char (isLetter)
 import Data.List (union)
 import Text.Read (readMaybe)
 
@@ -16,14 +17,7 @@ data Term
   | Int Int
   | App Term Term
   | Lam Variable Term
-  | Op2 BinaryOperator
-  deriving (Eq)
-
-data BinaryOperator
-  = Add
-  | Sub
-  | Mul
-  | Eq
+  | Call String
   deriving (Eq)
 
 type Type = Term
@@ -57,13 +51,8 @@ instance Show Term where
         vars a xs = (xs, a)
     let (xs, a') = vars a []
     "\\" ++ unwords (x : xs) ++ ". " ++ show a'
-  show (Op2 op) = "(" ++ show op ++ ")"
-
-instance Show BinaryOperator where
-  show Add = "+"
-  show Sub = "-"
-  show Mul = "*"
-  show Eq = "=="
+  show (Call f@(ch : _)) | isLetter ch = f
+  show (Call op) = "(" ++ op ++ ")"
 
 (|>) :: a -> (a -> b) -> b
 (|>) x f = f x
@@ -94,16 +83,16 @@ lam :: [Variable] -> Expr -> Expr
 lam xs a ctx = foldr Lam (a ctx) xs
 
 add :: Expr -> Expr -> Expr
-add a b = app (const (Op2 Add)) [a, b]
+add a b = app (const (Call "+")) [a, b]
 
 sub :: Expr -> Expr -> Expr
-sub a b = app (const (Op2 Sub)) [a, b]
+sub a b = app (const (Call "-")) [a, b]
 
 mul :: Expr -> Expr -> Expr
-mul a b = app (const (Op2 Mul)) [a, b]
+mul a b = app (const (Call "*")) [a, b]
 
 eq :: Expr -> Expr -> Expr
-eq a b = app (const (Op2 Eq)) [a, b]
+eq a b = app (const (Call "==")) [a, b]
 
 if' :: Expr -> Expr -> Expr -> Expr
 if' cond then' else' = app cond [then', else']
