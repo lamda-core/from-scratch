@@ -100,6 +100,9 @@ let' defs a ctx = do
   let resolve :: [Variable] -> [(Variable, Term)]
       resolve [] = []
       resolve (x : xs) = case lookup x defs of
+        -- Just b -> case let' (filter (\(y, _) -> x /= y) defs) b ctx of
+        --   Var x' | x == x' -> resolve xs
+        --   a -> (x, a) : resolve xs
         Just b -> (x, let' (filter (\(y, _) -> x /= y) defs) b ctx) : resolve xs
         Nothing -> resolve xs
 
@@ -107,7 +110,7 @@ let' defs a ctx = do
     |> resolve
     |> foldr (\(x, b) a -> App (Lam x a) b) (a ctx)
 
-match :: [Case] -> Expr
+match :: [([Binding], Expr)] -> Expr
 match [] = err
 match (([], a) : _) = a
 match cases = \ctx -> do
@@ -121,7 +124,11 @@ match cases = \ctx -> do
               |> map match
       lam [x] (app (var x) branches) ctx
     Nothing -> case cases of
-      ((PInt i, y) : ps, a) : cases -> lam [x] (if' (eq (var x) (int i)) (match [(ps, let' [(y, var x)] a)]) (match cases)) ctx
+      ((PInt i, y) : ps, a) : cases -> do
+        let cond = eq (var x) (int i)
+        let then' = match [(ps, let' [(y, var x)] a)]
+        let else' = app (match cases) [var x]
+        lam [x] (if' cond then' else') ctx
       _ -> lam [x] (match (filterMap (matchAny x) cases)) ctx
 
 -- Helper functions
@@ -149,7 +156,7 @@ lastNameIndex prefix (x : xs) = case lastNameIndex prefix xs of
     Nothing -> Just i
   Nothing -> if prefix == x then Just 0 else nameIndex prefix x
 
-findAlts :: [Case] -> Context -> Maybe [(Constructor, Int)]
+findAlts :: [([Binding], Expr)] -> Context -> Maybe [(Constructor, Int)]
 findAlts [] _ = Nothing
 findAlts (((PCtr ctr _, _) : _, _) : _) ctx = lookup ctr ctx
 findAlts (_ : cases) ctx = findAlts cases ctx

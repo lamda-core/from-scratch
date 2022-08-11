@@ -3,8 +3,6 @@ module Tao where
 import Core
 import Parser
 
--- TODO: AST type for pretty printing
-
 newtype Error
   = SyntaxError ParserError
   deriving (Eq, Show)
@@ -78,9 +76,9 @@ pattern = do
         succeed p
     ]
 
-case' :: Parser Case
-case' = do
-  _ <- token (char '|')
+case' :: Char -> Parser Case
+case' delimiter = do
+  _ <- token (char delimiter)
   bindings <- oneOrMore (token binding)
   _ <- token (text "->")
   expr <- expression
@@ -95,12 +93,18 @@ expression = do
         _ <- char ')'
         succeed op
 
+  let cases :: Parser [Case]
+      cases = do
+        c <- case' '\\'
+        cs <- zeroOrMore (do _ <- spaces; case' '|')
+        succeed (c : cs)
+
   withOperators
     [ atom (const err) (char '_'),
       atom var variableName,
       atom int integer,
       atom (const . Call) binop,
-      atom match (oneOrMore case'),
+      atom match cases,
       prefix let' (oneOrMore definition),
       prefix (const id) comment,
       inbetween (const id) (char '(') (char ')')

@@ -3,6 +3,7 @@ module Reducer.NameSubstitution where
 import Core
 
 evaluate :: Term -> Term
+evaluate (App Err _) = Err
 evaluate (App (Lam x (Var x')) b) | x == x' = evaluate b
 evaluate (App (Lam x (App a1 a2)) b) = evaluate (App (evaluate (App (Lam x a1) b)) (evaluate (App (Lam x a2) b)))
 evaluate (App (Lam x (Lam x' a)) _) | x == x' = Lam x (evaluate a)

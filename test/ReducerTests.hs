@@ -38,3 +38,6 @@ reducerTests name eval = describe ("--== ☯ " ++ name ++ " ☯ ==--") $ do
 
   it "☯ Lambda reduction" $ do
     eval (Lam "x" (add (int 1) (int 1) empty)) `shouldBe` Lam "x" (Int 2)
+
+  it "☯ Error reduction" $ do
+    eval (App Err (Int 1)) `shouldBe` Err

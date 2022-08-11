@@ -296,6 +296,7 @@ inbetween f open close expr = do
   _ <- close
   succeed (f open' y)
 
+-- TODO: rename to infixLeft
 infixL :: Int -> (op -> a -> a -> a) -> Parser op -> Infix a
 infixL opPrec f op prec x expr = do
   _ <- assert (prec < opPrec) ""
@@ -304,6 +305,7 @@ infixL opPrec f op prec x expr = do
   y <- expr opPrec
   succeed (f op' x y)
 
+-- TODO: rename to infixRight
 infixR :: Int -> (op -> a -> a -> a) -> Parser op -> Infix a
 infixR opPrec f op prec x expr = do
   _ <- assert (prec <= opPrec) ""

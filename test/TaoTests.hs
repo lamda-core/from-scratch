@@ -38,7 +38,7 @@ taoTests = describe "--== ☯ Tao language ☯ ==--" $ do
     parse "(Cons 1 xs)" pattern `shouldBe` Right (PCtr "Cons" [(PInt 1, ""), (PAny, "xs")])
 
   it "☯ case" $ do
-    let parseCase src ctx = fmap (\(ps, a) -> (ps, a ctx)) (parse src case')
+    let parseCase src ctx = fmap (\(ps, a) -> (ps, a ctx)) (parse src (case' '|'))
     parseCase "| x -> y" empty `shouldBe` Right ([(PAny, "x")], Var "y")
     parseCase "| x y -> z" empty `shouldBe` Right ([(PAny, "x"), (PAny, "y")], Var "z")
 
@@ -58,7 +58,9 @@ taoTests = describe "--== ☯ Tao language ☯ ==--" $ do
     parseExpr "(==)" empty `shouldBe` Right (Call "==")
     parseExpr "@x = 1; x" empty `shouldBe` Right (App (Lam "x" (Var "x")) (Int 1))
     -- parseExpr "x = 1\nx" empty `shouldBe` Right (Int 1)
-    parseExpr "| x -> y | _ -> z" empty `shouldBe` Right (Lam "%0" (App (Var "y") (Lam "%0" (Var "z"))))
+    parseExpr "\\ x -> y" empty `shouldBe` Right (Lam "%0" (Var "y"))
+    parseExpr "\\ x -> y | _ -> z" empty `shouldBe` Right (Lam "%0" (Var "y"))
+    parseExpr "\\ 1 -> y | x -> z" empty `shouldBe` Right (lam ["%0"] (app (eq (var "%0") (int 1)) [var "y", app (lam ["%0"] (var "z")) [var "%0"]]) empty)
     parseExpr "-- comment\nx" empty `shouldBe` Right (Var "x") -- TODO: move comment into empty or definition
     parseExpr "(x)" empty `shouldBe` Right (Var "x")
     parseExpr "x + y" empty `shouldBe` Right (add (var "x") (var "y") empty)
