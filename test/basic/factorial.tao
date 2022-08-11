@@ -3,4 +3,4 @@
   | n -> n * factorial (n - 1)
   ;
 
-factorial 1
+factorial 5

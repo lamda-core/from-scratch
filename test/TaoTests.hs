@@ -56,7 +56,7 @@ taoTests = describe "--== ☯ Tao language ☯ ==--" $ do
     parseExpr "(-)" empty `shouldBe` Right (Call "-")
     parseExpr "(*)" empty `shouldBe` Right (Call "*")
     parseExpr "(==)" empty `shouldBe` Right (Call "==")
-    parseExpr "@x = 1; x" empty `shouldBe` Right (App (Lam "x" (Var "x")) (Int 1))
+    parseExpr "@x = 1; x" empty `shouldBe` Right (App (Lam "x" (Var "x")) (App Fix (Lam "x" (Int 1))))
     -- parseExpr "x = 1\nx" empty `shouldBe` Right (Int 1)
     parseExpr "\\ x -> y" empty `shouldBe` Right (Lam "%0" (Var "y"))
     parseExpr "\\ x -> y | _ -> z" empty `shouldBe` Right (Lam "%0" (Var "y"))

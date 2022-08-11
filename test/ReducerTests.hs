@@ -41,3 +41,6 @@ reducerTests name eval = describe ("--== ☯ " ++ name ++ " ☯ ==--") $ do
 
   it "☯ Error reduction" $ do
     eval (App Err (Int 1)) `shouldBe` Err
+
+  it "☯ Fixed point recursion" $ do
+    eval (App Fix (Var "f")) `shouldBe` App (Var "f") (App Fix (Var "f"))

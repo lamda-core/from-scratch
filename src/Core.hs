@@ -17,6 +17,7 @@ data Term
   | App Term Term
   | Lam Variable Term
   | Call String
+  | Fix
   deriving (Eq)
 
 type Type = Term
@@ -40,7 +41,8 @@ instance Show Term where
   show Err = "!"
   show (Var x) = x
   show (Int i) = show i
-  show (App (Lam x b) a) = "@" ++ x ++ " = " ++ show a ++ "; " ++ show b
+  show (App (Lam x a) (App Fix (Lam x' b))) | x == x' = "@" ++ x ++ " = " ++ show b ++ "; " ++ show a
+  show (App a@(Lam _ _) b) = "(" ++ show a ++ ") " ++ show b
   show (App a b@(App _ _)) = show a ++ " (" ++ show b ++ ")"
   show (App a b@(Lam _ _)) = show a ++ " (" ++ show b ++ ")"
   show (App a b) = show a ++ " " ++ show b
@@ -51,6 +53,7 @@ instance Show Term where
     let (xs, a') = vars a []
     "\\" ++ unwords (x : xs) ++ ". " ++ show a'
   show (Call op) = "&" ++ op
+  show Fix = "^"
 
 (|>) :: a -> (a -> b) -> b
 (|>) x f = f x
@@ -100,10 +103,9 @@ let' defs a ctx = do
   let resolve :: [Variable] -> [(Variable, Term)]
       resolve [] = []
       resolve (x : xs) = case lookup x defs of
-        -- Just b -> case let' (filter (\(y, _) -> x /= y) defs) b ctx of
-        --   Var x' | x == x' -> resolve xs
-        --   a -> (x, a) : resolve xs
-        Just b -> (x, let' (filter (\(y, _) -> x /= y) defs) b ctx) : resolve xs
+        Just b -> do
+          let subdefs = filter (\(y, _) -> x /= y) defs
+          (x, App Fix (Lam x (let' subdefs b ctx))) : resolve xs
         Nothing -> resolve xs
 
   freeVariables (a ctx)

@@ -15,5 +15,6 @@ evaluate (App (App (Call f) a) b) = case (f, evaluate a, evaluate b) of
   ("*", Int a, Int b) -> Int (a * b)
   ("==", Int a, Int b) -> Lam "T" (Lam "F" (Var (if a == b then "T" else "F")))
   (_, a, b) -> App (App (Call f) a) b
+evaluate (App Fix a) = evaluate (App a (App Fix a))
 evaluate (Lam x a) = Lam x (evaluate a)
 evaluate a = a
