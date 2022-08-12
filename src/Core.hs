@@ -53,7 +53,7 @@ instance Show Term where
     let (xs, a') = vars a []
     "\\" ++ unwords (x : xs) ++ ". " ++ show a'
   show (Call op) = "&" ++ op
-  show Fix = "^"
+  show Fix = "#"
 
 (|>) :: a -> (a -> b) -> b
 (|>) x f = f x

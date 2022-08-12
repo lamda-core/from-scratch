@@ -2,19 +2,29 @@ module Reducer.NameSubstitution where
 
 import Core
 
+substitute :: String -> Term -> Term -> Term
+substitute x a (Var x') | x == x' = a
+substitute x a (App b1 b2) = App (substitute x a b1) (substitute x a b2)
+substitute x a (Lam y b) | x /= y = Lam y (substitute x a b)
+substitute _ _ b = b
+
+reduce :: Term -> Term
+reduce (App a b) = case reduce a of
+  Err -> Err
+  Lam x a -> reduce (substitute x b a)
+  App (Call f) a -> case (f, reduce a, reduce b) of
+    ("+", Int a, Int b) -> Int (a + b)
+    ("-", Int a, Int b) -> Int (a - b)
+    ("*", Int a, Int b) -> Int (a * b)
+    ("==", Int a, Int b) -> Lam "T" (Lam "F" (Var (if a == b then "T" else "F")))
+    (_, a, b) -> App (App (Call f) a) b
+  Fix -> reduce (App b (App Fix b))
+  a -> App a b
+reduce a = a
+
 evaluate :: Term -> Term
-evaluate (App Err _) = Err
-evaluate (App (Lam x (Var x')) b) | x == x' = evaluate b
-evaluate (App (Lam x (App a1 a2)) b) = evaluate (App (evaluate (App (Lam x a1) b)) (evaluate (App (Lam x a2) b)))
-evaluate (App (Lam x (Lam x' a)) _) | x == x' = Lam x (evaluate a)
-evaluate (App (Lam x (Lam y a)) b) = Lam y (evaluate (App (Lam x a) b))
-evaluate (App (Lam _ a) _) = evaluate a
-evaluate (App (App (Call f) a) b) = case (f, evaluate a, evaluate b) of
-  ("+", Int a, Int b) -> Int (a + b)
-  ("-", Int a, Int b) -> Int (a - b)
-  ("*", Int a, Int b) -> Int (a * b)
-  ("==", Int a, Int b) -> Lam "T" (Lam "F" (Var (if a == b then "T" else "F")))
-  (_, a, b) -> App (App (Call f) a) b
-evaluate (App Fix a) = evaluate (App a (App Fix a))
-evaluate (Lam x a) = Lam x (evaluate a)
-evaluate a = a
+evaluate a = case reduce a of
+  -- TODO: get Lambdas to a normal form for optimization.
+  -- Lam x a -> Lam x (evaluate a)
+  App a b -> App a (evaluate b)
+  a -> a
