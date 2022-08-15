@@ -38,8 +38,8 @@ reducerTests name eval = describe ("--== ☯ " ++ name ++ " ☯ ==--") $ do
     eval (add (var "x") (add i1 i1) empty) `shouldBe` add (var "x") (int 2) empty
     eval (add (var "x") (var "y") empty) `shouldBe` add (var "x") (var "y") empty
 
-  it "☯ Lambda evaluation" $ do
-    eval (Lam "x" (add (int 1) (int 1) empty)) `shouldBe` Lam "x" (Int 2)
+  -- it "☯ Lambda evaluation" $ do
+  --   eval (Lam "x" (add (int 1) (int 1) empty)) `shouldBe` Lam "x" (Int 2)
 
   it "☯ Fixed point recursion" $ do
     eval (App Fix (Lam "f" (Var "x"))) `shouldBe` Var "x"
