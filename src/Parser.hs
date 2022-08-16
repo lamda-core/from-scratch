@@ -6,15 +6,6 @@ newtype Parser a = Parser (State -> Either ParserError (a, State))
 
 data State = State
   { source :: String,
-    remaining :: String,
-    lastChar :: Maybe Char,
-    current :: Token,
-    stack :: [Token]
-  }
-  deriving (Eq, Show)
-
-data Token = Token
-  { name :: String,
     row :: Int,
     col :: Int
   }
@@ -55,14 +46,7 @@ instance Monad Parser where
 
 parse :: String -> Parser a -> Either ParserError a
 parse source (Parser p) = do
-  let initialState =
-        State
-          { source = source,
-            remaining = source,
-            lastChar = Nothing,
-            current = Token {name = "", row = 1, col = 1},
-            stack = []
-          }
+  let initialState = State {source = source, row = 1, col = 0}
   fmap fst (p initialState)
 
 succeed :: a -> Parser a
@@ -90,21 +74,13 @@ oneOf (p : ps) = p |> orElse (oneOf ps)
 -- Single characters
 
 anyChar :: Parser Char
-anyChar =
-  let advance state@State {remaining = ch : remaining, current = tok} =
-        Right
-          ( ch,
-            state
-              { remaining = remaining,
-                lastChar = Just ch,
-                current =
-                  if ch == '\n'
-                    then tok {row = row tok + 1, col = 1}
-                    else tok {col = col tok + 1}
-              }
-          )
+anyChar = do
+  let advance :: State -> Either ParserError (Char, State)
+      advance s@State {source = ch : source} = do
+        let (row', col') = if ch == '\n' then (row s + 1, 1) else (row s, col s + 1)
+        Right (ch, s {source = source, row = row', col = col'})
       advance state = Left (ParserError "a character" state)
-   in Parser advance
+  Parser advance
 
 charIf :: (Char -> Bool) -> String -> Parser Char
 charIf condition message = do

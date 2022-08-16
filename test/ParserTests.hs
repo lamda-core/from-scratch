@@ -171,3 +171,6 @@ parserTests = describe "--== Parser ==--" $ do
       parse "2^2^3" calculator `shouldBe` Right 256.0
 
 -- parse "1+-2+3" calculator `shouldBe` Right 1.0
+
+-- it "☯ indented" $ do
+--   parse "a" (indented (oneOrMore letter)) `shouldBe` Right "a"
