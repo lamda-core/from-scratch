@@ -50,7 +50,7 @@ binding = do
     [ do
         x <- token variableName
         _ <- token (char '@')
-        p <- pattern
+        p <- token pattern
         succeed (p, x),
       do
         p <- pattern
@@ -66,13 +66,13 @@ pattern = do
     [ fmap (const PAny) (char '_'),
       fmap PInt integer,
       do
-        ctr <- constructorName
-        ps <- zeroOrMore (do _ <- spaces; binding)
+        ctr <- token constructorName
+        ps <- zeroOrMore (token binding)
         succeed (PCtr ctr ps),
       do
         _ <- token (char '(')
         p <- token pattern
-        _ <- char ')'
+        _ <- token (char ')')
         succeed p
     ]
 
@@ -90,13 +90,13 @@ expression = do
       binop = do
         _ <- token (char '(')
         op <- token binaryOperator
-        _ <- char ')'
+        _ <- token (char ')')
         succeed op
 
   let cases :: Parser [Case]
       cases = do
-        c <- case' '\\'
-        cs <- zeroOrMore (do _ <- spaces; case' '|')
+        c <- token (case' '\\')
+        cs <- zeroOrMore (token (case' '|'))
         succeed (c : cs)
 
   withOperators
@@ -113,20 +113,20 @@ expression = do
       infixL 2 (const add) (char '+'),
       infixL 2 (const sub) (char '-'),
       infixL 3 (const mul) (char '*'),
-      infixL 4 (\_ a b -> app a [b]) spaces
+      infixL 4 (\_ a b -> app a [b]) (succeed ())
     ]
 
 typeAlternative :: Parser (Constructor, Int)
 typeAlternative = do
   name <- token constructorName
-  arity <- integer
+  arity <- token integer
   succeed (name, arity)
 
 typeDefinition :: Parser (Context -> Context)
 typeDefinition = do
   name <- token typeName
   let args = [] -- TODO
-  alts <- oneOrMore (do _ <- spaces; typeAlternative)
+  alts <- oneOrMore (token typeAlternative)
   succeed (defineType name args alts)
 
 context :: Parser Context
@@ -140,7 +140,7 @@ definition = do
   name <- token variableName
   _ <- token (char '=')
   expr <- token expression
-  _ <- char ';'
+  _ <- token (char ';')
   -- TODO: support newlines and indentation aware parsing
   -- expr <- expression
   -- _ <- zeroOrMore (oneOf [char ' ', char '\t'])

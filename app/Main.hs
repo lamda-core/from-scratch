@@ -1,14 +1,6 @@
-import Core (Term (..))
 import Reducer.NameSubstitution (evaluate)
 import qualified System.Environment
 import Tao
-
-evaluateFile :: String -> IO Term
-evaluateFile filename = do
-  src <- readFile filename
-  case fromText src of
-    Right term -> return (evaluate term)
-    Left err -> return Err --("❌ " ++ show err)
 
 main :: IO ()
 main = do
@@ -16,6 +8,8 @@ main = do
   case args of
     -- TODO: support passing arguments to expression.
     (filename : _) -> do
-      term <- evaluateFile filename
-      print term
+      src <- readFile filename
+      case fromText src of
+        Right term -> print (evaluate term)
+        Left err -> print ("❌ " ++ show err)
     _ -> putStrLn "🛑 Please give me a file to run."
