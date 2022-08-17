@@ -2,25 +2,17 @@ module Parser where
 
 import qualified Data.Char as Char
 
-newtype Parser a = Parser (State -> Either Error (a, State))
+newtype Parser a = Parser (State -> Either ParserError (a, State))
 
 data State = State
   { source :: String,
-    remaining :: String,
-    lastChar :: Maybe Char,
-    current :: Token,
-    stack :: [Token]
-  }
-  deriving (Eq, Show)
-
-data Token = Token
-  { name :: String,
+    indentation :: String,
     row :: Int,
     col :: Int
   }
   deriving (Eq, Show)
 
-data Error = Error String State
+data ParserError = ParserError String State
   deriving (Eq, Show)
 
 (|>) :: a -> (a -> b) -> b
@@ -48,28 +40,20 @@ instance Monad Parser where
       ( \state -> do
           (x, state) <- p state
           let (Parser p') = f x
-          (y, state) <- p' state
-          Right (y, state)
+          p' state
       )
   return x = succeed x
 
-parse :: String -> Parser a -> Either Error a
+parse :: String -> Parser a -> Either ParserError a
 parse source (Parser p) = do
-  let initialState =
-        State
-          { source = source,
-            remaining = source,
-            lastChar = Nothing,
-            current = Token {name = "", row = 1, col = 1},
-            stack = []
-          }
-  fmap fst (p initialState)
+  let state = State {source = source, indentation = "", row = 1, col = 1}
+  fmap fst (p state)
 
 succeed :: a -> Parser a
 succeed value = Parser (\state -> Right (value, state))
 
 expected :: String -> Parser a
-expected message = Parser (Left . Error message)
+expected message = Parser (Left . ParserError message)
 
 assert :: Bool -> String -> Parser ()
 assert check message = if check then succeed () else expected message
@@ -84,27 +68,30 @@ orElse (Parser else') (Parser p) = do
     )
 
 oneOf :: [Parser a] -> Parser a
-oneOf [] = expected ""
+oneOf [] = expected "a valid choice"
 oneOf (p : ps) = p |> orElse (oneOf ps)
+
+endOfFile :: Parser ()
+endOfFile = do
+  let eof :: State -> Either ParserError ((), State)
+      eof state = case source state of
+        "" -> Right ((), state)
+        _ -> Left (ParserError "end of file" state)
+  Parser eof
+
+endOfLine :: Parser ()
+endOfLine = oneOf [do _ <- char '\n'; succeed (), endOfFile]
 
 -- Single characters
 
 anyChar :: Parser Char
-anyChar =
-  let advance state@State {remaining = ch : remaining, current = tok} =
-        Right
-          ( ch,
-            state
-              { remaining = remaining,
-                lastChar = Just ch,
-                current =
-                  if ch == '\n'
-                    then tok {row = row tok + 1, col = 1}
-                    else tok {col = col tok + 1}
-              }
-          )
-      advance state = Left (Error "a character" state)
-   in Parser advance
+anyChar = do
+  let advance :: State -> Either ParserError (Char, State)
+      advance state = case source state of
+        '\n' : source -> Right ('\n', state {source = source, row = row state + 1, col = 1})
+        ch : source -> Right (ch, state {source = source, col = col state + 1})
+        "" -> Left (ParserError "a character" state)
+  Parser advance
 
 charIf :: (Char -> Bool) -> String -> Parser Char
 charIf condition message = do
@@ -115,17 +102,14 @@ charIf condition message = do
 space :: Parser Char
 space = charIf Char.isSpace "a blank space"
 
-spaces :: Parser String
-spaces = zeroOrMore space
-
 letter :: Parser Char
 letter = charIf Char.isLetter "a letter"
 
-lower :: Parser Char
-lower = charIf Char.isLower "a lowercase letter"
+lowercase :: Parser Char
+lowercase = charIf Char.isLower "a lowercase letter"
 
-upper :: Parser Char
-upper = charIf Char.isUpper "an uppercase letter"
+uppercase :: Parser Char
+uppercase = charIf Char.isUpper "an uppercase letter"
 
 digit :: Parser Char
 digit = charIf Char.isDigit "a digit from 0 to 9"
@@ -143,8 +127,8 @@ charCaseSensitive :: Char -> Parser Char
 charCaseSensitive c = charIf (== c) ("the character '" <> [c] <> "' (case sensitive)")
 
 -- Sequences
-optional :: Parser a -> Parser (Maybe a)
-optional parser = fmap Just parser |> orElse (succeed Nothing)
+maybe' :: Parser a -> Parser (Maybe a)
+maybe' parser = fmap Just parser |> orElse (succeed Nothing)
 
 zeroOrOne :: Parser a -> Parser [a]
 zeroOrOne parser = fmap (: []) parser |> orElse (succeed [])
@@ -192,7 +176,14 @@ between min max parser = do
   succeed (x : xs)
 
 -- TODO: split :: Parser delim -> Parser a -> Parser [a]
--- TODO: until
+until' :: (a -> Bool) -> Parser a -> Parser [a]
+until' done parser =
+  do
+    x <- parser
+    _ <- assert (not (done x)) ""
+    xs <- until' done parser
+    succeed (x : xs)
+    |> orElse (succeed [])
 
 foldL :: (b -> a -> b) -> b -> Parser a -> Parser b
 foldL f initial parser =
@@ -240,11 +231,23 @@ textCaseSensitive str =
   chain (fmap charCaseSensitive str)
     |> orElse (expected $ "the text '" <> str <> "' (case sensitive)")
 
-identifier :: Parser Char -> [Parser Char] -> Parser String
-identifier first rest = do
-  x <- first
-  xs <- zeroOrMore (oneOf rest)
-  succeed (x : xs)
+token :: Parser a -> Parser a
+token parser = do
+  -- let empty :: Parser Bool
+  --     empty = do
+  --       _ <- zeroOrMore (oneOf [char ' ', char '\t', char '\r'])
+  --       oneOf [fmap (const True) (char '\n'), succeed False]
+  -- -- TODO: checkIndent
+  -- let checkIndent :: a -> Parser a
+  --     checkIndent x = succeed x
+  -- x <- parser
+  -- newline <- empty
+  -- if newline
+  --   then checkIndent x
+  --   else succeed x
+  x <- parser
+  _ <- zeroOrMore space
+  succeed x
 
 -- TODO: line
 -- TODO: date
@@ -265,67 +268,53 @@ identifier first rest = do
 -- TODO: numberExp
 -- TODO: quotedText
 -- TODO: collection : ([a] -> b) -> Parser open -> Parser a -> Parser delim -> Parser close -> Parser b
+-- TODO: comment
+-- TODO: multiLineComment
 
 -- Operator precedence
-type UnaryOperator a = (Int -> Parser a) -> Parser a
+type Prefix a = (Int -> Parser a) -> Parser a
 
-type BinaryOperator a = Int -> a -> UnaryOperator a
+type Infix a = Int -> a -> Prefix a
 
-term :: (a -> b) -> Parser a -> UnaryOperator b
-term f parser _ = do
-  x <- parser
-  _ <- spaces
+atom :: (a -> b) -> Parser a -> Prefix b
+atom f parser _ = do
+  x <- token parser
   succeed (f x)
 
-prefix :: (op -> a -> a) -> Parser op -> UnaryOperator a
+prefix :: (op -> a -> a) -> Parser op -> Prefix a
 prefix f op expr = do
-  op' <- op
-  _ <- spaces
+  op' <- token op
   y <- expr 0
-  _ <- spaces
   succeed (f op' y)
 
-prefixList :: (a -> b -> b) -> b -> Parser open -> Parser a -> Parser close -> Parser b
-prefixList f initial open parser close = do
-  _ <- open
-  y <- foldR f initial (do _ <- spaces; parser)
-  _ <- spaces
-  _ <- close
-  _ <- spaces
-  succeed y
-
-inbetween :: (open -> a -> a) -> Parser open -> Parser close -> UnaryOperator a
+inbetween :: (open -> a -> a) -> Parser open -> Parser close -> Prefix a
 inbetween f open close expr = do
-  open' <- open
-  _ <- spaces
+  open' <- token open
   y <- expr 0
-  _ <- spaces
-  _ <- close
-  _ <- spaces
+  _ <- zeroOrMore space -- allow the close delimiter to be "out of indentation"
+  _ <- token close
   succeed (f open' y)
 
-infixL :: Int -> (op -> a -> a -> a) -> Parser op -> BinaryOperator a
+-- TODO: rename to infixLeft
+infixL :: Int -> (op -> a -> a -> a) -> Parser op -> Infix a
 infixL opPrec f op prec x expr = do
-  _ <- assert (prec < opPrec) ""
-  op' <- op
-  _ <- spaces
+  _ <- assert (prec < opPrec) ("infixL " ++ show opPrec)
+  op' <- token op
   y <- expr opPrec
-  _ <- spaces
   succeed (f op' x y)
 
-infixR :: Int -> (op -> a -> a -> a) -> Parser op -> BinaryOperator a
+-- TODO: rename to infixRight
+infixR :: Int -> (op -> a -> a -> a) -> Parser op -> Infix a
 infixR opPrec f op prec x expr = do
-  _ <- assert (prec <= opPrec) ""
-  op' <- op
-  _ <- spaces
+  _ <- assert (prec <= opPrec) ("infixR " ++ show opPrec)
+  op' <- token op
   y <- expr opPrec
-  _ <- spaces
   succeed (f op' x y)
 
-expression :: [UnaryOperator a] -> [BinaryOperator a] -> Parser a
-expression unaryOperators binaryOperators =
-  let unary f = oneOf (fmap (\op -> op f) unaryOperators)
-      binary x f prec = oneOf (fmap (\op -> op x f prec) binaryOperators)
+withOperators :: [Prefix a] -> [Infix a] -> Parser a
+withOperators prefix infix' =
+  let unary f = oneOf (fmap (\op -> op f) prefix)
+      binary x f prec = oneOf (fmap (\op -> op x f prec) infix')
       expr prec = do
         x <- unary expr
         expr2 prec x
@@ -335,3 +324,8 @@ expression unaryOperators binaryOperators =
           expr2 prec y
           |> orElse (succeed x)
    in expr 0
+
+indented :: Parser a -> Parser a
+indented parser = do
+  -- TODO: token should take care of both checking and bookkeeping of indentations
+  parser

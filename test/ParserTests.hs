@@ -7,7 +7,7 @@ parserTests :: SpecWith ()
 parserTests = describe "--== Parser ==--" $ do
   let parse' :: String -> Parser a -> Either String a
       parse' source parser = case parse source parser of
-        Left (Error message _) -> Left message
+        Left (ParserError message _) -> Left message
         Right x -> Right x
 
   describe "☯ Control flow" $ do
@@ -25,9 +25,17 @@ parserTests = describe "--== Parser ==--" $ do
       parse' "abc" (expected "something" |> orElse (succeed False)) `shouldBe` Right False
 
     it "☯ oneOf" $ do
-      parse' "abc" (oneOf [] :: Parser ()) `shouldBe` Left ""
+      parse' "abc" (oneOf [] :: Parser ()) `shouldBe` Left "a valid choice"
       parse' "abc" (oneOf [char 'a']) `shouldBe` Right 'a'
       parse' "abc" (oneOf [char 'b', char 'a']) `shouldBe` Right 'a'
+
+    it "☯ endOfFile" $ do
+      parse' "" endOfFile `shouldBe` Right ()
+      parse' "a" endOfFile `shouldBe` Left "end of file"
+
+    it "☯ endOfLine" $ do
+      parse' "\n" endOfLine `shouldBe` Right ()
+      parse' "" endOfLine `shouldBe` Right ()
 
   describe "☯ Single characters" $ do
     it "☯ anyChar" $ do
@@ -48,13 +56,13 @@ parserTests = describe "--== Parser ==--" $ do
       parse' "A" letter `shouldBe` Right 'A'
       parse' " " letter `shouldBe` Left "a letter"
 
-    it "☯ lower" $ do
-      parse' "a" lower `shouldBe` Right 'a'
-      parse' "A" lower `shouldBe` Left "a lowercase letter"
+    it "☯ lowercase" $ do
+      parse' "a" lowercase `shouldBe` Right 'a'
+      parse' "A" lowercase `shouldBe` Left "a lowercase letter"
 
-    it "☯ upper" $ do
-      parse' "A" upper `shouldBe` Right 'A'
-      parse' "a" upper `shouldBe` Left "an uppercase letter"
+    it "☯ uppercase" $ do
+      parse' "A" uppercase `shouldBe` Right 'A'
+      parse' "a" uppercase `shouldBe` Left "an uppercase letter"
 
     it "☯ digit" $ do
       parse' "0" digit `shouldBe` Right '0'
@@ -80,9 +88,9 @@ parserTests = describe "--== Parser ==--" $ do
       parse' "A" (charCaseSensitive 'a') `shouldBe` Left "the character 'a' (case sensitive)"
 
   describe "☯ Sequences" $ do
-    it "☯ optional" $ do
-      parse' "abc!" (optional letter) `shouldBe` Right (Just 'a')
-      parse' "_bc!" (optional letter) `shouldBe` Right Nothing
+    it "☯ maybe'" $ do
+      parse' "abc!" (maybe' letter) `shouldBe` Right (Just 'a')
+      parse' "_bc!" (maybe' letter) `shouldBe` Right Nothing
 
     it "☯ zeroOrOne" $ do
       parse' "abc!" (zeroOrOne letter) `shouldBe` Right ['a']
@@ -121,6 +129,12 @@ parserTests = describe "--== Parser ==--" $ do
     --   parse' "" (split (char ',') letter) `shouldBe` Right []
     --   parse' "a,b,c" (split (char ',') letter) `shouldBe` Right ['a', 'b', 'c']
 
+    it "☯ until" $ do
+      parse' "abc" (until' (== 'c') letter) `shouldBe` Right "ab"
+      parse' "ab1" (until' (== 'c') letter) `shouldBe` Right "ab"
+      parse' "ab" (until' (== 'c') letter) `shouldBe` Right "ab"
+      parse' "" (until' (== 'c') letter) `shouldBe` Right ""
+
     it "☯ foldL" $ do
       parse' "." (foldL (flip (:)) "" letter) `shouldBe` Right ""
       parse' "abc." (foldL (flip (:)) "" letter) `shouldBe` Right "cba"
@@ -147,15 +161,22 @@ parserTests = describe "--== Parser ==--" $ do
       parse' "hello" (textCaseSensitive "hello") `shouldBe` Right "hello"
       parse' "Hello" (textCaseSensitive "hello") `shouldBe` Left "the text 'hello' (case sensitive)"
 
-    it "☯ identifier" $ do
-      parse' "1" (identifier letter [alphanumeric]) `shouldBe` Left "a letter"
-      parse' "a1" (identifier letter [alphanumeric]) `shouldBe` Right "a1"
+    it "☯ token" $ do
+      parse' "a" (oneOrMore (token letter)) `shouldBe` Right "a"
+      parse' "a b" (oneOrMore (token letter)) `shouldBe` Right "ab"
+      parse' "a\tb" (oneOrMore (token letter)) `shouldBe` Right "ab"
+      -- parse' "a\nb" (oneOrMore (token letter)) `shouldBe` Right "a"
+      -- parse' "a\n b" (oneOrMore (token letter)) `shouldBe` Right "ab"
+      -- parse' "a\n\n b" (oneOrMore (token letter)) `shouldBe` Right "ab"
+      -- parse' "a\n   \n b" (oneOrMore (token letter)) `shouldBe` Right "ab"
+      True `shouldBe` True
 
-    it "☯ expression" $ do
+    it "☯ withOperators" $ do
       let calculator =
-            expression
+            withOperators
               [ prefix (\_ x -> - x) (char '-'),
-                term id number
+                atom id number,
+                inbetween (const id) (char '(') (char ')')
               ]
               [ infixL 1 (const (+)) (char '+'),
                 infixL 1 (const (-)) (char '-'),
@@ -164,11 +185,26 @@ parserTests = describe "--== Parser ==--" $ do
               ]
       parse "1" calculator `shouldBe` Right 1.0
       parse "-1" calculator `shouldBe` Right (-1.0)
+      parse "- 1" calculator `shouldBe` Right (-1.0)
       parse "--1" calculator `shouldBe` Right 1.0
       parse "1+2" calculator `shouldBe` Right 3.0
-      parse "1-2-3" calculator `shouldBe` Right (-4.0)
-      parse "1+2*3" calculator `shouldBe` Right 7.0
-      parse "3*2+1" calculator `shouldBe` Right 7.0
-      parse "2^2^3" calculator `shouldBe` Right 256.0
+      parse "1 + 2" calculator `shouldBe` Right 3.0
+      parse "1 - 2 - 3" calculator `shouldBe` Right (-4.0)
+      parse "1 + 2 * 3" calculator `shouldBe` Right 7.0
+      parse "3 * 2 + 1" calculator `shouldBe` Right 7.0
+      parse "2 ^ 2 ^ 3" calculator `shouldBe` Right 256.0
+      -- parse "1+-2+3" calculator `shouldBe` Right 1.0
+      parse "(1+2)*3" calculator `shouldBe` Right 9.0
+      parse "( 1 + 2 ) * 3" calculator `shouldBe` Right 9.0
 
--- parse "1+-2+3" calculator `shouldBe` Right 1.0
+    it "☯ indented" $ do
+      let indented' = oneOrMore (indented (oneOrMore (token letter)))
+      parse' "a" indented' `shouldBe` Right ["a"]
+      parse' "a b" indented' `shouldBe` Right ["ab"]
+      -- parse' "a b\nc" indented' `shouldBe` Right ["ab", "c"]
+      -- parse' "a b\n c" indented' `shouldBe` Right ["abc"]
+      -- parse' "a b\n c\nd" indented' `shouldBe` Right ["abc", "d"]
+      -- parse' "a b\n c\n d" indented' `shouldBe` Right ["abc", "cd"]
+      -- parse' "a b\n c\n  d" indented' `shouldBe` Right ["abcd"]
+      -- parse' "a b\n c\n\n\n  d" indented' `shouldBe` Right ["abcd"]
+      True `shouldBe` True

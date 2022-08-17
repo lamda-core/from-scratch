@@ -1,9 +1,6 @@
 module Core where
 
-import Data.List (delete, find, union)
-import Data.Maybe (fromMaybe)
-import Parser (Parser)
-import qualified Parser as P
+import Data.List (union)
 import Text.Read (readMaybe)
 
 -- Bidirectional type checking: https://youtu.be/utyBNDj7s2w
@@ -13,205 +10,179 @@ type Variable = String
 
 type Constructor = String
 
-data Expr
-  = Var Variable
+data Term
+  = Err
+  | Var Variable
   | Int Int
-  | App Expr Expr
-  | Lam Variable Expr
-  | Op2 BinaryOperator
-  deriving (Eq, Show)
+  | App Term Term
+  | Lam Variable Term
+  | Call String
+  | Fix
+  deriving (Eq)
 
-data BinaryOperator
-  = Add
-  | Sub
-  | Mul
-  | Eq
-  deriving (Eq, Show)
+type Type = Term
 
 data Pattern
   = PAny
-  | PVar Variable
   | PInt Int
-  | PCtr Constructor [Pattern]
+  | PCtr Constructor [Binding]
   deriving (Eq, Show)
 
-type Context = Constructor -> Maybe [(Constructor, [Variable])]
+type Binding = (Pattern, Variable)
 
-newtype Error
-  = SyntaxError P.Error
-  deriving (Eq, Show)
+type Case = ([Binding], Expr)
+
+-- TODO: make Context opaque
+type Context = [(Constructor, [(Constructor, Int)])]
+
+type Expr = Context -> Term
+
+instance Show Term where
+  show Err = "!"
+  show (Var x) = x
+  show (Int i) = show i
+  show (App (Lam x a) (App Fix (Lam x' b))) | x == x' = "@" ++ x ++ " = " ++ show b ++ "; " ++ show a
+  show (App a@(Lam _ _) b) = "(" ++ show a ++ ") " ++ show b
+  show (App a b@(App _ _)) = show a ++ " (" ++ show b ++ ")"
+  show (App a b@(Lam _ _)) = show a ++ " (" ++ show b ++ ")"
+  show (App a b) = show a ++ " " ++ show b
+  show (Lam x a) = do
+    let vars :: Term -> [Variable] -> ([Variable], Term)
+        vars (Lam x a) xs = let (xs', a') = vars a xs in (x : xs', a')
+        vars a xs = (xs, a)
+    let (xs, a') = vars a []
+    "\\" ++ unwords (x : xs) ++ ". " ++ show a'
+  show (Call op) = "&" ++ op
+  show Fix = "#"
 
 (|>) :: a -> (a -> b) -> b
 (|>) x f = f x
 
 infixl 1 |>
 
+-- Context
+empty :: Context
+empty = []
+
+defineType :: String -> [Variable] -> [(Constructor, Int)] -> Context -> Context
+defineType _ _ alts ctx = map (\(ctr, _) -> (ctr, alts)) alts ++ ctx
+
+-- High level constructs
+err :: Expr
+err = const Err
+
+var :: Variable -> Expr
+var x = const (Var x)
+
+int :: Int -> Expr
+int i = const (Int i)
+
 app :: Expr -> [Expr] -> Expr
-app = foldl App
+app a bs ctx = foldl App (a ctx) (map (\b -> b ctx) bs)
 
 lam :: [Variable] -> Expr -> Expr
-lam xs a = foldr Lam a xs
+lam xs a ctx = foldr Lam (a ctx) xs
 
 add :: Expr -> Expr -> Expr
-add a b = app (Op2 Add) [a, b]
+add a b = app (const (Call "+")) [a, b]
 
 sub :: Expr -> Expr -> Expr
-sub a b = app (Op2 Sub) [a, b]
+sub a b = app (const (Call "-")) [a, b]
 
 mul :: Expr -> Expr -> Expr
-mul a b = app (Op2 Mul) [a, b]
+mul a b = app (const (Call "*")) [a, b]
 
 eq :: Expr -> Expr -> Expr
-eq a b = app (Op2 Eq) [a, b]
+eq a b = app (const (Call "==")) [a, b]
 
 if' :: Expr -> Expr -> Expr -> Expr
 if' cond then' else' = app cond [then', else']
 
--- Constructor alternatives
-ctrAlts :: Constructor -> Context -> Maybe [Constructor]
-ctrAlts ctr ctx = do
-  ctrs <- ctx ctr
-  Just (map fst ctrs)
+let' :: [(Variable, Expr)] -> Expr -> Expr
+let' defs a ctx = do
+  let resolve :: [Variable] -> [(Variable, Term)]
+      resolve [] = []
+      resolve (x : xs) = case lookup x defs of
+        Just b -> do
+          let subdefs = filter (\(y, _) -> x /= y) defs
+          (x, App Fix (Lam x (let' subdefs b ctx))) : resolve xs
+        Nothing -> resolve xs
 
--- Constructor arguments
-ctrArgs :: Constructor -> Context -> Maybe [Variable]
-ctrArgs ctr ctx = do
-  ctrs <- ctx ctr
-  (_, xs) <- find (\(c, _) -> c == ctr) ctrs
-  Just xs
+  freeVariables (a ctx)
+    |> resolve
+    |> foldr (\(x, b) a -> App (Lam x a) b) (a ctx)
 
-caseFind :: [(Constructor, [Variable], Expr)] -> Expr -> Constructor -> Expr
-caseFind cases default' c = case find (\(c', _, _) -> c == c') cases of
-  Just (_, xs, a) -> lam xs a
-  Nothing -> default'
+match :: [([Binding], Expr)] -> Expr
+match [] = err
+match (([], a) : _) = a
+match cases = \ctx -> do
+  let freeVars = map (\(_, a) -> freeVariables (a ctx)) cases |> foldl union []
+  let x = newName freeVars "%"
+  case findAlts cases ctx of
+    Just alts -> do
+      let branches =
+            map (matchCtr x) alts
+              |> map (`filterMap` cases)
+              |> map match
+      lam [x] (app (var x) branches) ctx
+    Nothing -> case cases of
+      ((PInt i, y) : ps, a) : cases -> do
+        let cond = eq (var x) (int i)
+        let then' = match [(ps, let' [(y, var x)] a)]
+        let else' = app (match cases) [var x]
+        lam [x] (if' cond then' else') ctx
+      _ -> lam [x] (match (filterMap (matchAny x) cases)) ctx
 
-case' :: Expr -> [(Constructor, [Variable], Expr)] -> Expr -> Context -> Expr
-case' _ [] default' _ = default'
-case' a cases@((ctr, _, _) : _) default' ctx = case ctrAlts ctr ctx of
-  Just ctrs -> app a (map (caseFind cases default') ctrs)
-  Nothing -> default'
-
-nameIndex :: String -> String -> Maybe Int
-nameIndex "" x = readMaybe x
-nameIndex (c : prefix) (c' : x) | c == c' = nameIndex prefix x
-nameIndex _ _ = Nothing
-
-findLastNameIndex :: String -> [String] -> Maybe Int
-findLastNameIndex _ [] = Nothing
-findLastNameIndex prefix (x : xs) = case findLastNameIndex prefix xs of
-  Just i -> case nameIndex prefix x of
-    Just j -> Just (max i j)
-    Nothing -> Just i
-  Nothing -> if prefix == x then Just 0 else nameIndex prefix x
-
-freeVariables :: Expr -> [String]
+-- Helper functions
+freeVariables :: Term -> [String]
 freeVariables (Var x) = [x]
 freeVariables (App a b) = freeVariables a `union` freeVariables b
 freeVariables (Lam x a) = delete x (freeVariables a)
 freeVariables _ = []
 
 newName :: [String] -> String -> String
-newName used x = case findLastNameIndex x used of
+newName used x = case lastNameIndex x used of
   Just i -> x ++ show (i + 1)
-  Nothing -> x
+  Nothing -> x ++ "0"
 
-newNames :: [String] -> [String] -> [String]
-newNames _ [] = []
-newNames used (x : xs) = let y = newName used x in y : newNames (y : used) xs
+nameIndex :: String -> String -> Maybe Int
+nameIndex "" x = readMaybe x
+nameIndex (ch : prefix) (ch' : x) | ch == ch' = nameIndex prefix x
+nameIndex _ _ = Nothing
 
-patternName :: Pattern -> Maybe Variable
-patternName (PVar x) = Just x
-patternName _ = Nothing
+lastNameIndex :: String -> [String] -> Maybe Int
+lastNameIndex _ [] = Nothing
+lastNameIndex prefix (x : xs) = case lastNameIndex prefix xs of
+  Just i -> case nameIndex prefix x of
+    Just j -> Just (max i j)
+    Nothing -> Just i
+  Nothing -> if prefix == x then Just 0 else nameIndex prefix x
 
-renamePatterns :: [Pattern] -> [Variable] -> Expr -> Expr
-renamePatterns (PVar x : ps) (y : ys) a | x /= y = substitute x (Var y) (renamePatterns ps ys a)
-renamePatterns (_ : ps) (_ : ys) a = renamePatterns ps ys a
-renamePatterns _ _ a = a
+findAlts :: [([Binding], Expr)] -> Context -> Maybe [(Constructor, Int)]
+findAlts [] _ = Nothing
+findAlts (((PCtr ctr _, _) : _, _) : _) ctx = lookup ctr ctx
+findAlts (_ : cases) ctx = findAlts cases ctx
 
-pathToCase :: Context -> ([Pattern], Expr) -> Maybe (Constructor, [Variable], Expr)
-pathToCase ctx (PCtr c ps : _, a) = do
-  args <- ctrArgs c ctx
-  let usedNames = freeVariables (lam (filterMap patternName ps) a)
-  let names = zipWith (\x p -> fromMaybe x (patternName p)) args ps
-  let xs = newNames usedNames names
-  Just (c, xs, renamePatterns ps xs a)
-pathToCase _ _ = Nothing
+matchAny :: Variable -> Case -> Maybe Case
+matchAny x ((PAny, y) : ps, a) = Just (ps, let' [(y, var x)] a)
+matchAny _ _ = Nothing
 
-matchAny :: Expr -> [([Pattern], Expr)] -> [([Pattern], Expr)]
-matchAny _ [] = []
-matchAny a ((PAny : ps, b) : paths) = (ps, b) : matchAny a paths
-matchAny a ((PVar x : ps, b) : paths) = (ps, substitute x a b) : matchAny a paths
-matchAny a (_ : paths) = matchAny a paths
+matchCtr :: Variable -> (Constructor, Int) -> Case -> Maybe Case
+matchCtr x (_, n) ((PAny, y) : ps, a) = Just (replicate n (PAny, "") ++ ps, let' [(y, var x)] a)
+matchCtr x (ctr, _) ((PCtr ctr' qs, y) : ps, a) | ctr == ctr' = Just (qs ++ ps, let' [(y, var x)] a)
+matchCtr _ _ _ = Nothing
 
-match :: [Expr] -> [([Pattern], Expr)] -> Expr -> Context -> Expr
-match [] ((_, body) : _) _ _ = body
-match args [] default' _ = lam (map (const "") args) default'
-match (arg : args) ((PInt i : ps, body) : paths) default' ctx =
-  if' (eq arg (Int i)) (match args [(ps, body)] default' ctx) (match (arg : args) paths default' ctx)
-match (arg : args) paths default' ctx =
-  case' arg (filterMap (pathToCase ctx) paths) (match args (matchAny arg paths) default' ctx) ctx
-
--- TODO: let' -- allow to define mutually recursive functions and pattern destructuring
--- let' :: [(Pattern, Expr)] -> Expr -> Context -> Expr
-
-substitute :: Variable -> Expr -> Expr -> Expr
-substitute x a (Var x') | x == x' = a
-substitute x a (App b c) = App (substitute x a b) (substitute x a c)
-substitute x a (Lam y b) | x /= y = Lam y (substitute x a b)
-substitute _ _ b = b
-
+-- Standard library functions
 filterMap :: (a -> Maybe b) -> [a] -> [b]
 filterMap _ [] = []
 filterMap f (x : xs) = case f x of
   Just y -> y : filterMap f xs
   Nothing -> filterMap f xs
 
--- == Parser == --
-parse :: String -> Either Error Expr
-parse text = case P.parse text parseExpr of
-  Left err -> Left (SyntaxError err)
-  Right ast -> Right ast
+delete :: Eq a => a -> [a] -> [a]
+delete _ [] = []
+delete x (x' : xs) | x == x' = delete x xs
+delete x (y : xs) = y : delete x xs
 
-parseExpr :: Parser Expr
-parseExpr =
-  P.expression
-    [ P.term Var parseVariable,
-      P.term Int P.integer,
-      P.term (uncurry lam) parseLambda,
-      P.term Op2 parseBinaryOperator
-    ]
-    [ P.infixL 1 (const add) (P.char '+'),
-      P.infixL 1 (const sub) (P.char '-'),
-      P.infixL 2 (const mul) (P.char '*'),
-      P.infixL 3 (const App) P.spaces
-    ]
-
-parseVariable :: Parser String
-parseVariable = do
-  c <- P.oneOf [P.letter, P.char '_']
-  cs <- P.zeroOrMore (P.oneOf [P.alphanumeric, P.char '_'])
-  P.succeed (c : cs)
-
-parseLambda :: Parser ([String], Expr)
-parseLambda = do
-  _ <- P.char '\\'
-  xs <- P.zeroOrMore (do _ <- P.spaces; parseVariable)
-  _ <- P.spaces
-  _ <- P.text "->"
-  _ <- P.spaces
-  a <- parseExpr
-  P.succeed (xs, a)
-
-parseBinaryOperator :: Parser BinaryOperator
-parseBinaryOperator = do
-  _ <- P.char '('
-  _ <- P.spaces
-  op <-
-    P.oneOf
-      [ fmap (const Add) (P.char '+'),
-        fmap (const Sub) (P.char '-'),
-        fmap (const Mul) (P.char '*')
-      ]
-  _ <- P.spaces
-  _ <- P.char ')'
-  P.succeed op
+-- TODO: union : [a] -> [a] -> [a]
+-- TODO: readInt : String -> Maybe Int
